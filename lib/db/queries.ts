@@ -40,7 +40,7 @@ export async function getContacts(workspaceId: string) {
     id: contacts.id, firstName: contacts.firstName, lastName: contacts.lastName,
     email: contacts.email, phone: contacts.phone, status: contacts.status,
     createdAt: contacts.createdAt, accountId: contacts.accountId,
-    companyName: companies.name,
+    linkedinUrl: contacts.linkedinUrl, companyName: companies.name,
   })
     .from(contacts)
     .leftJoin(companies, eq(contacts.accountId, companies.id))

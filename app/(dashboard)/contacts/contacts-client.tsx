@@ -10,13 +10,14 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus, Search, Trash2, Pencil } from 'lucide-react'
+import { Plus, Search, Trash2, Pencil, Linkedin } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Contact, Company } from '@/lib/db/schema'
 
 type ContactRow = {
   id: string; firstName: string; lastName: string; email: string | null
   phone: string | null; status: string; accountId: string | null; companyName: string | null
+  linkedinUrl: string | null
 }
 
 const statusColors: Record<string, string> = {
@@ -45,6 +46,7 @@ function ContactForm({ workspaceId, companies, contact, onClose }: {
       phone: (form.get('phone') as string) || undefined,
       status,
       accountId: accountId || undefined,
+      linkedinUrl: (form.get('linkedin_url') as string) || undefined,
     }
     startTransition(async () => {
       try {
@@ -75,6 +77,10 @@ function ContactForm({ workspaceId, companies, contact, onClose }: {
       <div className="space-y-1.5">
         <Label htmlFor="phone">Phone</Label>
         <Input id="phone" name="phone" defaultValue={contact?.phone ?? ''} />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="linkedin_url">LinkedIn URL</Label>
+        <Input id="linkedin_url" name="linkedin_url" placeholder="https://linkedin.com/in/…" defaultValue={contact?.linkedinUrl ?? ''} />
       </div>
       <div className="space-y-1.5">
         <Label>Status</Label>
