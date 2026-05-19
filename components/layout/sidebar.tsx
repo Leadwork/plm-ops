@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { signOut } from 'next-auth/react'
 import { cn } from '@/lib/utils'
@@ -26,14 +27,7 @@ export function Sidebar() {
     <aside className="flex h-full w-60 flex-col bg-sidebar">
       {/* Logo */}
       <div className="flex h-14 items-center px-4 border-b border-sidebar-border">
-        <div className="flex items-center gap-2">
-          <div className="h-7 w-7 rounded-lg brand-gradient flex items-center justify-center shrink-0">
-            <span className="text-white text-xs font-bold">P</span>
-          </div>
-          <span className="font-bold text-sm tracking-tight brand-gradient-text">
-            ProLeadMaker
-          </span>
-        </div>
+        <Image src="/logo-full.png" alt="Pro Lead Maker" width={140} height={24} className="object-contain" priority />
       </div>
 
       {/* Nav */}
