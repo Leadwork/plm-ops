@@ -33,7 +33,7 @@ export async function deleteContact(id: string) {
 
 export async function scheduleFollowUp(data: {
   workspaceId: string; contactId: string; contactName: string
-  type: string; dueDate: string; note?: string
+  type: string; dueDate: string; dueTime?: string; note?: string
 }) {
   const session = await auth()
   if (!session?.user?.id) throw new Error('Unauthorized')
@@ -46,6 +46,7 @@ export async function scheduleFollowUp(data: {
     priority: 'medium',
     assigneeId: session.user.id,
     dueDate: data.dueDate,
+    dueTime: data.dueTime || null,
   })
   revalidatePath('/tasks')
   revalidatePath('/contacts')

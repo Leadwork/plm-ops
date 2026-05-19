@@ -21,6 +21,7 @@ export function FollowUpButton({ contact, workspaceId }: { contact: Contact; wor
     e.preventDefault()
     const form = new FormData(e.currentTarget)
     const dueDate = form.get('due_date') as string
+    const dueTime = form.get('due_time') as string
     const note = form.get('note') as string
     if (!dueDate) return
     startTransition(async () => {
@@ -31,6 +32,7 @@ export function FollowUpButton({ contact, workspaceId }: { contact: Contact; wor
           contactName: `${contact.firstName} ${contact.lastName}`,
           type,
           dueDate,
+          dueTime: dueTime || undefined,
           note: note || undefined,
         })
         toast.success('Follow-up scheduled')
@@ -59,9 +61,15 @@ export function FollowUpButton({ contact, workspaceId }: { contact: Contact; wor
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="due_date">Due date</Label>
-              <Input id="due_date" name="due_date" type="date" required />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="due_date">Due date</Label>
+                <Input id="due_date" name="due_date" type="date" required />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="due_time">Time <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                <Input id="due_time" name="due_time" type="time" />
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="note">Note (optional)</Label>

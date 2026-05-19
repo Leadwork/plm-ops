@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import { updateWorkspaceName, inviteMember, createStage, updateStage, deleteStage } from '@/lib/actions/workspace'
 import { createCustomField, deleteCustomField } from '@/lib/actions/custom-fields'
+import { createNotificationChannel, deleteNotificationChannel, toggleNotificationChannel } from '@/lib/actions/notification-channels'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -13,8 +14,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
-import { Crown, User, Plus, Pencil, Trash2, Type, Hash, Calendar, Link2, List } from 'lucide-react'
-import type { Workspace, Stage, CustomFieldDefinition } from '@/lib/db/schema'
+import { Crown, User, Plus, Pencil, Trash2, Type, Hash, Calendar, Link2, List, Bell, Send, CheckCircle2, XCircle } from 'lucide-react'
+import type { Workspace, Stage, CustomFieldDefinition, NotificationChannel } from '@/lib/db/schema'
 
 interface Props {
   workspace: Workspace | null
@@ -23,6 +24,7 @@ interface Props {
   pipelineId: string
   currentUserId: string
   customFields: CustomFieldDefinition[]
+  notificationChannels: NotificationChannel[]
 }
 
 const FIELD_TYPES = [
@@ -39,7 +41,7 @@ const ENTITY_TYPES = [
   { value: 'companies', label: 'Companies' },
 ]
 
-export function SettingsClient({ workspace, members, stages: initialStages, pipelineId, currentUserId, customFields: initialCustomFields }: Props) {
+export function SettingsClient({ workspace, members, stages: initialStages, pipelineId, currentUserId, customFields: initialCustomFields, notificationChannels: initialChannels }: Props) {
   const [, startTransition] = useTransition()
   const [workspaceName, setWorkspaceName] = useState(workspace?.name ?? '')
   const [inviteEmail, setInviteEmail] = useState('')
@@ -57,6 +59,15 @@ export function SettingsClient({ workspace, members, stages: initialStages, pipe
   const [fieldOptions, setFieldOptions] = useState('')
   const [fieldPending, startFieldTransition] = useTransition()
   const [activeEntity, setActiveEntity] = useState('contacts')
+
+  // Notification channels state
+  const [channels, setChannels] = useState(initialChannels)
+  const [channelDialog, setChannelDialog] = useState(false)
+  const [channelLabel, setChannelLabel] = useState('')
+  const [channelBotToken, setChannelBotToken] = useState('')
+  const [channelChatId, setChannelChatId] = useState('')
+  const [channelPending, startChannelTransition] = useTransition()
+  const [testingId, setTestingId] = useState<string | null>(null)
 
   function handleSaveWorkspace() {
     if (!workspace || !workspaceName.trim()) return
@@ -167,6 +178,67 @@ export function SettingsClient({ workspace, members, stages: initialStages, pipe
         toast.success('Field deleted')
       } catch { toast.error('Failed to delete field') }
     })
+  }
+
+  function handleCreateChannel() {
+    if (!channelLabel.trim()) { toast.error('Label is required'); return }
+    if (!channelBotToken.trim()) { toast.error('Bot token is required'); return }
+    if (!channelChatId.trim()) { toast.error('Chat ID is required'); return }
+    if (!workspace) return
+    startChannelTransition(async () => {
+      try {
+        await createNotificationChannel({
+          workspaceId: workspace.id,
+          channelType: 'telegram',
+          label: channelLabel.trim(),
+          config: { botToken: channelBotToken.trim(), chatId: channelChatId.trim() },
+        })
+        setChannels(prev => [...prev, {
+          id: crypto.randomUUID(), workspaceId: workspace.id,
+          userId: '', channelType: 'telegram',
+          label: channelLabel.trim(),
+          config: JSON.stringify({ botToken: channelBotToken.trim(), chatId: channelChatId.trim() }),
+          enabled: true, createdAt: new Date(),
+        }])
+        toast.success('Telegram channel added')
+        setChannelDialog(false)
+        setChannelLabel(''); setChannelBotToken(''); setChannelChatId('')
+      } catch { toast.error('Failed to add channel') }
+    })
+  }
+
+  function handleDeleteChannel(id: string) {
+    if (!confirm('Remove this notification channel?')) return
+    startChannelTransition(async () => {
+      try {
+        await deleteNotificationChannel(id)
+        setChannels(prev => prev.filter(c => c.id !== id))
+        toast.success('Channel removed')
+      } catch { toast.error('Failed to remove channel') }
+    })
+  }
+
+  function handleToggleChannel(id: string, enabled: boolean) {
+    startChannelTransition(async () => {
+      try {
+        await toggleNotificationChannel(id, enabled)
+        setChannels(prev => prev.map(c => c.id === id ? { ...c, enabled } : c))
+      } catch { toast.error('Failed to update channel') }
+    })
+  }
+
+  async function handleTestChannel(id: string) {
+    setTestingId(id)
+    try {
+      const res = await fetch('/api/notification-channels/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channelId: id }),
+      })
+      if (res.ok) toast.success('Test message sent! Check Telegram.')
+      else { const e = await res.json(); toast.error(e.error ?? 'Test failed') }
+    } catch { toast.error('Test failed') }
+    finally { setTestingId(null) }
   }
 
   return (
@@ -364,6 +436,85 @@ export function SettingsClient({ workspace, members, stages: initialStages, pipe
               <Button variant="outline" onClick={() => setFieldDialog(false)}>Cancel</Button>
               <Button onClick={handleCreateField} disabled={fieldPending}>
                 {fieldPending ? 'Creating…' : 'Create Field'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Notification Channels ── */}
+      <Card>
+        <CardHeader className="flex flex-row items-start justify-between space-y-0">
+          <div>
+            <CardTitle className="flex items-center gap-2"><Bell className="h-4 w-4" />Notification Channels</CardTitle>
+            <CardDescription>Get reminders on Telegram (more channels coming soon).</CardDescription>
+          </div>
+          <Button size="sm" onClick={() => setChannelDialog(true)}>
+            <Plus className="h-3.5 w-3.5 mr-1" />Add Channel
+          </Button>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {channels.length === 0 && (
+            <p className="text-sm text-muted-foreground py-2">No notification channels yet. Add Telegram to get daily reminders at 8 AM.</p>
+          )}
+          {channels.map(ch => (
+            <div key={ch.id} className="flex items-center gap-3 p-3 rounded-lg border group hover:bg-accent/30 transition-colors">
+              <div className="h-8 w-8 rounded-md bg-blue-100 text-blue-600 flex items-center justify-center shrink-0 text-sm font-bold">TG</div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium">{ch.label}</p>
+                <p className="text-xs text-muted-foreground capitalize">{ch.channelType} · Daily at 8 AM UTC</p>
+              </div>
+              <div className="flex items-center gap-1">
+                <Button size="sm" variant="ghost" className="h-7 text-xs gap-1"
+                  onClick={() => handleTestChannel(ch.id)} disabled={testingId === ch.id}>
+                  <Send className="h-3 w-3" />{testingId === ch.id ? 'Sending…' : 'Test'}
+                </Button>
+                <Button size="icon" variant="ghost" className="h-7 w-7"
+                  onClick={() => handleToggleChannel(ch.id, !ch.enabled)} disabled={channelPending}>
+                  {ch.enabled
+                    ? <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    : <XCircle className="h-4 w-4 text-muted-foreground" />}
+                </Button>
+                <Button size="icon" variant="ghost" className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={() => handleDeleteChannel(ch.id)} disabled={channelPending}>
+                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                </Button>
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {/* ── Add Telegram Channel Dialog ── */}
+      <Dialog open={channelDialog} onOpenChange={setChannelDialog}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Add Telegram Notification</DialogTitle></DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 p-3 text-xs text-blue-700 dark:text-blue-300 space-y-1">
+              <p className="font-semibold">How to set up:</p>
+              <ol className="list-decimal list-inside space-y-1">
+                <li>Open Telegram and message <b>@BotFather</b></li>
+                <li>Send <code>/newbot</code>, follow the steps, copy the <b>Bot Token</b></li>
+                <li>Start a chat with your new bot (send it any message)</li>
+                <li>Open <code>https://api.telegram.org/bot&#123;TOKEN&#125;/getUpdates</code> — find your <b>chat id</b> in the JSON</li>
+              </ol>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Label</Label>
+              <Input placeholder="e.g. My Phone" value={channelLabel} onChange={e => setChannelLabel(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Bot Token</Label>
+              <Input placeholder="1234567890:ABC..." value={channelBotToken} onChange={e => setChannelBotToken(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Chat ID</Label>
+              <Input placeholder="e.g. 987654321" value={channelChatId} onChange={e => setChannelChatId(e.target.value)} />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setChannelDialog(false)}>Cancel</Button>
+              <Button onClick={handleCreateChannel} disabled={channelPending}>
+                {channelPending ? 'Adding…' : 'Add Channel'}
               </Button>
             </div>
           </div>

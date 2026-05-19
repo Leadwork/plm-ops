@@ -158,6 +158,7 @@ export const tasks = pgTable('tasks', {
   priority: text('priority').notNull().default('medium'),
   assigneeId: text('assignee_id').references(() => users.id, { onDelete: 'set null' }),
   dueDate: date('due_date'),
+  dueTime: text('due_time'), // HH:MM, optional
   recurrence: text('recurrence'),
   createdAt: timestamp('created_at').defaultNow(),
 })
@@ -189,6 +190,17 @@ export const customFieldValues = pgTable('custom_field_values', {
   updatedAt: timestamp('updated_at').defaultNow(),
 }, t => [unique().on(t.entityId, t.fieldDefId)])
 
+export const notificationChannels = pgTable('notification_channels', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  channelType: text('channel_type').notNull(), // 'telegram'
+  label: text('label').notNull(),
+  config: text('config').notNull(), // JSON: { botToken, chatId }
+  enabled: boolean('enabled').notNull().default(true),
+  createdAt: timestamp('created_at').defaultNow(),
+})
+
 export const notifications = pgTable('notifications', {
   id: uuid('id').primaryKey().defaultRandom(),
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
@@ -214,6 +226,7 @@ export type Project = typeof projects.$inferSelect
 export type TaskList = typeof taskLists.$inferSelect
 export type Task = typeof tasks.$inferSelect
 export type TaskComment = typeof taskComments.$inferSelect
+export type NotificationChannel = typeof notificationChannels.$inferSelect
 export type Notification = typeof notifications.$inferSelect
 export type CustomFieldDefinition = typeof customFieldDefinitions.$inferSelect
 export type CustomFieldValue = typeof customFieldValues.$inferSelect
