@@ -9,6 +9,7 @@ const geist = Geist({ subsets: ['latin'], variable: '--font-geist' })
 export const metadata: Metadata = {
   title: 'ProLeadMaker — CRM, Pipeline & PM',
   description: 'All-in-one CRM, Sales Pipeline and Project Management for your team.',
+  icons: { icon: '/favicon.png', shortcut: '/favicon.png', apple: '/favicon.png' },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

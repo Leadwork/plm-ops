@@ -26,6 +26,9 @@ export async function createCustomField(data: {
     position: data.position,
   })
   revalidatePath('/settings')
+  revalidatePath('/contacts', 'layout')
+  revalidatePath('/accounts', 'layout')
+  revalidatePath('/pipeline')
 }
 
 export async function deleteCustomField(id: string) {
@@ -33,6 +36,9 @@ export async function deleteCustomField(id: string) {
   if (!session?.user?.id) throw new Error('Unauthorized')
   await db.delete(customFieldDefinitions).where(eq(customFieldDefinitions.id, id))
   revalidatePath('/settings')
+  revalidatePath('/contacts', 'layout')
+  revalidatePath('/accounts', 'layout')
+  revalidatePath('/pipeline')
 }
 
 export async function upsertCustomFieldValue(entityId: string, fieldDefId: string, value: string) {
