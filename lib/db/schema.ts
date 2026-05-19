@@ -166,6 +166,17 @@ export const taskComments = pgTable('task_comments', {
   createdAt: timestamp('created_at').defaultNow(),
 })
 
+export const notifications = pgTable('notifications', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  body: text('body'),
+  href: text('href'),
+  read: boolean('read').notNull().default(false),
+  createdAt: timestamp('created_at').defaultNow(),
+})
+
 // ── Inferred types ───────────────────────────────────────────────────────────
 export type User = typeof users.$inferSelect
 export type Workspace = typeof workspaces.$inferSelect
@@ -180,3 +191,4 @@ export type Project = typeof projects.$inferSelect
 export type TaskList = typeof taskLists.$inferSelect
 export type Task = typeof tasks.$inferSelect
 export type TaskComment = typeof taskComments.$inferSelect
+export type Notification = typeof notifications.$inferSelect

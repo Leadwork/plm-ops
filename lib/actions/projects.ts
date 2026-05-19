@@ -1,7 +1,7 @@
 'use server'
 
 import { db } from '@/lib/db'
-import { projects, taskLists, tasks, taskComments } from '@/lib/db/schema'
+import { projects, taskLists, tasks, taskComments, notifications } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { auth } from '@/auth'
 import { revalidatePath } from 'next/cache'
@@ -53,6 +53,17 @@ export async function createTask(data: {
   const session = await auth()
   if (!session?.user?.id) throw new Error('Unauthorized')
   await db.insert(tasks).values({ ...data, status: 'todo' })
+
+  if (data.assigneeId && data.assigneeId !== session.user.id) {
+    await db.insert(notifications).values({
+      workspaceId: data.workspaceId,
+      userId: data.assigneeId,
+      title: `📋 Task assigned: ${data.title}`,
+      body: data.description ?? null,
+      href: `/projects/${data.projectId}`,
+    })
+  }
+
   revalidatePath(`/projects/${data.projectId}`)
 }
 
@@ -90,6 +101,18 @@ export async function addTaskComment(taskId: string, projectId: string, content:
   if (!session?.user?.id) throw new Error('Unauthorized')
   if (!content.trim()) throw new Error('Comment cannot be empty')
   await db.insert(taskComments).values({ taskId, userId: session.user.id, content: content.trim() })
+
+  const [task] = await db.select().from(tasks).where(eq(tasks.id, taskId)).limit(1)
+  if (task?.assigneeId && task.assigneeId !== session.user.id) {
+    await db.insert(notifications).values({
+      workspaceId: task.workspaceId,
+      userId: task.assigneeId,
+      title: `💬 New comment on: ${task.title}`,
+      body: content.trim().slice(0, 120),
+      href: `/projects/${projectId}`,
+    })
+  }
+
   revalidatePath(`/projects/${projectId}`)
 }
 
