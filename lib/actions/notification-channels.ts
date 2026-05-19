@@ -14,14 +14,15 @@ export async function createNotificationChannel(data: {
 }) {
   const session = await auth()
   if (!session?.user?.id) throw new Error('Unauthorized')
-  await db.insert(notificationChannels).values({
+  const [created] = await db.insert(notificationChannels).values({
     workspaceId: data.workspaceId,
     userId: session.user.id,
     channelType: data.channelType,
     label: data.label,
     config: JSON.stringify(data.config),
-  })
+  }).returning()
   revalidatePath('/settings')
+  return created
 }
 
 export async function deleteNotificationChannel(id: string) {

@@ -187,19 +187,13 @@ export function SettingsClient({ workspace, members, stages: initialStages, pipe
     if (!workspace) return
     startChannelTransition(async () => {
       try {
-        await createNotificationChannel({
+        const created = await createNotificationChannel({
           workspaceId: workspace.id,
           channelType: 'telegram',
           label: channelLabel.trim(),
           config: { botToken: channelBotToken.trim(), chatId: channelChatId.trim() },
         })
-        setChannels(prev => [...prev, {
-          id: crypto.randomUUID(), workspaceId: workspace.id,
-          userId: '', channelType: 'telegram',
-          label: channelLabel.trim(),
-          config: JSON.stringify({ botToken: channelBotToken.trim(), chatId: channelChatId.trim() }),
-          enabled: true, createdAt: new Date(),
-        }])
+        setChannels(prev => [...prev, created])
         toast.success('Telegram channel added')
         setChannelDialog(false)
         setChannelLabel(''); setChannelBotToken(''); setChannelChatId('')
