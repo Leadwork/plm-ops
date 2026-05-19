@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus, Search, Trash2, Pencil, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
+import { Plus, Search, Trash2, Pencil, ChevronUp, ChevronDown, ChevronsUpDown, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Company } from '@/lib/db/schema'
 
@@ -140,6 +140,26 @@ export function ContactsClient({ contacts, companies, workspaceId }: Props) {
   const [editing, setEditing] = useState<ContactRow | undefined>()
   const [sortKey, setSortKey] = useState<SortKey>('createdAt')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
+  const [importing, setImporting] = useState(false)
+
+  async function handleImportCSV(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    setImporting(true)
+    try {
+      const text = await file.text()
+      const res = await fetch('/api/contacts/import', { method: 'POST', body: text, headers: { 'Content-Type': 'text/csv' } })
+      const data = await res.json()
+      if (!res.ok) { toast.error(data.error ?? 'Import failed'); return }
+      toast.success(`Imported ${data.imported} contacts`)
+      window.location.reload()
+    } catch {
+      toast.error('Import failed')
+    } finally {
+      setImporting(false)
+    }
+  }
 
   function handleSort(key: SortKey) {
     if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
@@ -196,9 +216,20 @@ export function ContactsClient({ contacts, companies, workspaceId }: Props) {
             ))}
           </SelectContent>
         </Select>
-        <Button onClick={() => { setEditing(undefined); setDialogOpen(true) }}>
-          <Plus className="h-4 w-4 mr-2" />Add Contact
-        </Button>
+        <div className="flex items-center gap-2">
+          <input
+            type="file" accept=".csv,text/csv" className="sr-only"
+            id="csv-import-input"
+            onChange={handleImportCSV}
+            disabled={importing}
+          />
+          <Button variant="outline" disabled={importing} onClick={() => document.getElementById('csv-import-input')?.click()}>
+            <Upload className="h-4 w-4 mr-2" />{importing ? 'Importing…' : 'Import CSV'}
+          </Button>
+          <Button onClick={() => { setEditing(undefined); setDialogOpen(true) }}>
+            <Plus className="h-4 w-4 mr-2" />Add Contact
+          </Button>
+        </div>
       </div>
 
       <div className="text-xs text-muted-foreground">{filtered.length} contact{filtered.length !== 1 ? 's' : ''}</div>

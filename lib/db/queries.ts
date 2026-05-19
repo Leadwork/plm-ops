@@ -1,6 +1,6 @@
 import { db } from './index'
 import { workspaceMembers, contacts, companies, deals, tasks, activities, stages, pipelines, projects, taskLists, taskComments, users, workspaces } from './schema'
-import { eq, lt, desc, asc, and, sql, gte } from 'drizzle-orm'
+import { eq, lt, desc, asc, and, sql, gte, ilike, or } from 'drizzle-orm'
 
 export async function getAnalytics(workspaceId: string) {
   const twelveMonthsAgo = new Date()
@@ -327,4 +327,36 @@ export async function getWorkspaceMembers(workspaceId: string) {
 export async function getWorkspace(workspaceId: string) {
   const [w] = await db.select().from(workspaces).where(eq(workspaces.id, workspaceId)).limit(1)
   return w ?? null
+}
+
+export async function globalSearch(workspaceId: string, query: string) {
+  const q = `%${query}%`
+  const [contactResults, dealResults, projectResults] = await Promise.all([
+    db.select({
+      id: contacts.id, firstName: contacts.firstName, lastName: contacts.lastName,
+      email: contacts.email, status: contacts.status,
+    })
+      .from(contacts)
+      .where(and(
+        eq(contacts.workspaceId, workspaceId),
+        or(
+          ilike(contacts.firstName, q),
+          ilike(contacts.lastName, q),
+          ilike(contacts.email, q),
+        )
+      ))
+      .limit(5),
+
+    db.select({ id: deals.id, title: deals.title, value: deals.value, status: deals.status })
+      .from(deals)
+      .where(and(eq(deals.workspaceId, workspaceId), ilike(deals.title, q)))
+      .limit(5),
+
+    db.select({ id: projects.id, name: projects.name, status: projects.status })
+      .from(projects)
+      .where(and(eq(projects.workspaceId, workspaceId), ilike(projects.name, q)))
+      .limit(5),
+  ])
+
+  return { contacts: contactResults, deals: dealResults, projects: projectResults }
 }
