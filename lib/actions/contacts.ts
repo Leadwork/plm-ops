@@ -1,10 +1,18 @@
 'use server'
 
 import { db } from '@/lib/db'
-import { contacts, tasks } from '@/lib/db/schema'
-import { eq } from 'drizzle-orm'
+import { contacts, tasks, notificationChannels } from '@/lib/db/schema'
+import { eq, and } from 'drizzle-orm'
 import { auth } from '@/auth'
 import { revalidatePath } from 'next/cache'
+
+async function sendTelegramMessage(botToken: string, chatId: string, text: string) {
+  await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML', disable_web_page_preview: true }),
+  }).catch(() => {})
+}
 
 export async function createContact(data: {
   workspaceId: string; firstName: string; lastName: string
@@ -48,6 +56,24 @@ export async function scheduleFollowUp(data: {
     dueDate: data.dueDate,
     dueTime: data.dueTime || null,
   })
+
+  // Send instant Telegram confirmation to all enabled channels
+  const channels = await db.select().from(notificationChannels).where(
+    and(eq(notificationChannels.userId, session.user.id), eq(notificationChannels.enabled, true))
+  )
+  if (channels.length) {
+    const when = data.dueTime
+      ? `${data.dueDate} at ${data.dueTime}`
+      : data.dueDate
+    const text = `📅 <b>Follow-up Scheduled</b>\n\n<b>${title}</b>\n🕐 ${when}${data.note ? `\n📝 ${data.note}` : ''}\n\n<a href="https://app.proleadmaker.com/tasks">View in ProLeadMaker →</a>`
+    for (const ch of channels) {
+      if (ch.channelType === 'telegram') {
+        const config: Record<string, string> = JSON.parse(ch.config)
+        await sendTelegramMessage(config.botToken, config.chatId, text)
+      }
+    }
+  }
+
   revalidatePath('/tasks')
   revalidatePath('/contacts')
 }

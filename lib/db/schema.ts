@@ -160,6 +160,7 @@ export const tasks = pgTable('tasks', {
   dueDate: date('due_date'),
   dueTime: text('due_time'), // HH:MM, optional
   recurrence: text('recurrence'),
+  reminderSentAt: timestamp('reminder_sent_at'),
   createdAt: timestamp('created_at').defaultNow(),
 })
 
