@@ -1,7 +1,7 @@
 'use server'
 
 import { db } from '@/lib/db'
-import { projects, taskLists, tasks } from '@/lib/db/schema'
+import { projects, taskLists, tasks, taskComments } from '@/lib/db/schema'
 import { eq } from 'drizzle-orm'
 import { auth } from '@/auth'
 import { revalidatePath } from 'next/cache'
@@ -76,4 +76,19 @@ export async function completeTask(id: string) {
   if (!session?.user?.id) throw new Error('Unauthorized')
   await db.update(tasks).set({ status: 'done' }).where(eq(tasks.id, id))
   revalidatePath('/tasks')
+}
+
+export async function addTaskComment(taskId: string, projectId: string, content: string) {
+  const session = await auth()
+  if (!session?.user?.id) throw new Error('Unauthorized')
+  if (!content.trim()) throw new Error('Comment cannot be empty')
+  await db.insert(taskComments).values({ taskId, userId: session.user.id, content: content.trim() })
+  revalidatePath(`/projects/${projectId}`)
+}
+
+export async function deleteTaskComment(id: string, projectId: string) {
+  const session = await auth()
+  if (!session?.user?.id) throw new Error('Unauthorized')
+  await db.delete(taskComments).where(eq(taskComments.id, id))
+  revalidatePath(`/projects/${projectId}`)
 }

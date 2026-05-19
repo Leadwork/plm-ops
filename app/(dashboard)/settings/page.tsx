@@ -33,6 +33,7 @@ export default async function SettingsPage() {
         workspace={workspace}
         members={members}
         stages={pipelineStages}
+        pipelineId={pipeline?.id ?? ''}
         currentUserId={session.user.id}
       />
     </div>

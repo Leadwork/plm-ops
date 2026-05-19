@@ -34,6 +34,7 @@ export async function createUserAndWorkspace(name: string, email: string, passwo
 export async function updateWorkspaceName(workspaceId: string, name: string) {
   const session = await auth()
   if (!session?.user?.id) throw new Error('Unauthorized')
+  if (!name.trim()) throw new Error('Name is required')
   await db.update(workspaces).set({ name }).where(eq(workspaces.id, workspaceId))
   revalidatePath('/settings')
 }
@@ -57,4 +58,29 @@ export async function getWorkspaceId(userId: string) {
     .where(eq(workspaceMembers.userId, userId))
     .limit(1)
   return member?.workspaceId ?? null
+}
+
+export async function createStage(pipelineId: string, name: string, probability: number, position: number) {
+  const session = await auth()
+  if (!session?.user?.id) throw new Error('Unauthorized')
+  if (!name.trim()) throw new Error('Stage name is required')
+  await db.insert(stages).values({ pipelineId, name: name.trim(), probability, position })
+  revalidatePath('/settings')
+  revalidatePath('/pipeline')
+}
+
+export async function updateStage(id: string, data: { name?: string; probability?: number }) {
+  const session = await auth()
+  if (!session?.user?.id) throw new Error('Unauthorized')
+  await db.update(stages).set(data).where(eq(stages.id, id))
+  revalidatePath('/settings')
+  revalidatePath('/pipeline')
+}
+
+export async function deleteStage(id: string) {
+  const session = await auth()
+  if (!session?.user?.id) throw new Error('Unauthorized')
+  await db.delete(stages).where(eq(stages.id, id))
+  revalidatePath('/settings')
+  revalidatePath('/pipeline')
 }

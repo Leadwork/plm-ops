@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useMemo } from 'react'
 import Link from 'next/link'
+import { format } from 'date-fns'
 import { createContact, updateContact, deleteContact } from '@/lib/actions/contacts'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,19 +11,29 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus, Search, Trash2, Pencil } from 'lucide-react'
+import { Plus, Search, Trash2, Pencil, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Contact, Company } from '@/lib/db/schema'
+import type { Company } from '@/lib/db/schema'
 
 type ContactRow = {
   id: string; firstName: string; lastName: string; email: string | null
   phone: string | null; status: string; accountId: string | null; companyName: string | null
-  linkedinUrl: string | null
+  linkedinUrl: string | null; createdAt: Date | null
 }
+
+type SortKey = 'name' | 'email' | 'status' | 'company' | 'createdAt'
+type SortDir = 'asc' | 'desc'
 
 const statusColors: Record<string, string> = {
   lead: 'bg-blue-100 text-blue-700', prospect: 'bg-yellow-100 text-yellow-700',
   customer: 'bg-green-100 text-green-700', churned: 'bg-gray-100 text-gray-600',
+}
+
+function SortIcon({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey; sortDir: SortDir }) {
+  if (col !== sortKey) return <ChevronsUpDown className="h-3 w-3 opacity-30 inline ml-1" />
+  return sortDir === 'asc'
+    ? <ChevronUp className="h-3 w-3 inline ml-1" />
+    : <ChevronDown className="h-3 w-3 inline ml-1" />
 }
 
 function ContactForm({ workspaceId, companies, contact, onClose }: {
@@ -31,17 +42,25 @@ function ContactForm({ workspaceId, companies, contact, onClose }: {
   const [pending, startTransition] = useTransition()
   const [status, setStatus] = useState(contact?.status ?? 'lead')
   const [accountId, setAccountId] = useState(contact?.accountId ?? '')
+  const [errors, setErrors] = useState<Record<string, string>>({})
 
-  function handleStatusChange(v: string | null) { if (v) setStatus(v) }
-  function handleAccountChange(v: string | null) { setAccountId(v ?? '') }
+  function validate(firstName: string, lastName: string) {
+    const e: Record<string, string> = {}
+    if (!firstName.trim()) e.firstName = 'First name is required'
+    if (!lastName.trim()) e.lastName = 'Last name is required'
+    setErrors(e)
+    return !Object.keys(e).length
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const form = new FormData(e.currentTarget)
+    const firstName = form.get('first_name') as string
+    const lastName = form.get('last_name') as string
+    if (!validate(firstName, lastName)) return
     const data = {
       workspaceId,
-      firstName: form.get('first_name') as string,
-      lastName: form.get('last_name') as string,
+      firstName, lastName,
       email: (form.get('email') as string) || undefined,
       phone: (form.get('phone') as string) || undefined,
       status,
@@ -64,10 +83,12 @@ function ContactForm({ workspaceId, companies, contact, onClose }: {
         <div className="space-y-1.5">
           <Label htmlFor="first_name">First name</Label>
           <Input id="first_name" name="first_name" defaultValue={contact?.firstName} required />
+          {errors.firstName && <p className="text-xs text-destructive">{errors.firstName}</p>}
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="last_name">Last name</Label>
           <Input id="last_name" name="last_name" defaultValue={contact?.lastName} required />
+          {errors.lastName && <p className="text-xs text-destructive">{errors.lastName}</p>}
         </div>
       </div>
       <div className="space-y-1.5">
@@ -84,7 +105,7 @@ function ContactForm({ workspaceId, companies, contact, onClose }: {
       </div>
       <div className="space-y-1.5">
         <Label>Status</Label>
-        <Select value={status} onValueChange={handleStatusChange}>
+        <Select value={status} onValueChange={v => { if (v) setStatus(v) }}>
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
             {['lead', 'prospect', 'customer', 'churned'].map(s => <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>)}
@@ -93,7 +114,7 @@ function ContactForm({ workspaceId, companies, contact, onClose }: {
       </div>
       <div className="space-y-1.5">
         <Label>Account</Label>
-        <Select value={accountId} onValueChange={handleAccountChange}>
+        <Select value={accountId} onValueChange={v => setAccountId(v ?? '')}>
           <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="">None</SelectItem>
@@ -114,12 +135,34 @@ interface Props { contacts: ContactRow[]; companies: Company[]; workspaceId: str
 export function ContactsClient({ contacts, companies, workspaceId }: Props) {
   const [, startTransition] = useTransition()
   const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('all')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editing, setEditing] = useState<ContactRow | undefined>()
+  const [sortKey, setSortKey] = useState<SortKey>('createdAt')
+  const [sortDir, setSortDir] = useState<SortDir>('desc')
 
-  const filtered = contacts.filter(c =>
-    `${c.firstName} ${c.lastName} ${c.email ?? ''}`.toLowerCase().includes(search.toLowerCase())
-  )
+  function handleSort(key: SortKey) {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortKey(key); setSortDir('asc') }
+  }
+
+  const filtered = useMemo(() => {
+    let list = contacts.filter(c => {
+      const matchesSearch = `${c.firstName} ${c.lastName} ${c.email ?? ''} ${c.companyName ?? ''}`.toLowerCase().includes(search.toLowerCase())
+      const matchesStatus = statusFilter === 'all' || c.status === statusFilter
+      return matchesSearch && matchesStatus
+    })
+    list = [...list].sort((a, b) => {
+      let av: string, bv: string
+      if (sortKey === 'name') { av = `${a.firstName} ${a.lastName}`; bv = `${b.firstName} ${b.lastName}` }
+      else if (sortKey === 'email') { av = a.email ?? ''; bv = b.email ?? '' }
+      else if (sortKey === 'status') { av = a.status; bv = b.status }
+      else if (sortKey === 'company') { av = a.companyName ?? ''; bv = b.companyName ?? '' }
+      else { av = a.createdAt?.toISOString() ?? ''; bv = b.createdAt?.toISOString() ?? '' }
+      return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av)
+    })
+    return list
+  }, [contacts, search, statusFilter, sortKey, sortDir])
 
   function handleDelete(id: string) {
     if (!confirm('Delete this contact?')) return
@@ -129,30 +172,53 @@ export function ContactsClient({ contacts, companies, workspaceId }: Props) {
     })
   }
 
+  function ThHead({ col, children }: { col: SortKey; children: React.ReactNode }) {
+    return (
+      <TableHead className="cursor-pointer select-none hover:bg-accent/50" onClick={() => handleSort(col)}>
+        {children}<SortIcon col={col} sortKey={sortKey} sortDir={sortDir} />
+      </TableHead>
+    )
+  }
+
   return (
     <div className="flex-1 p-6 space-y-4">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input className="pl-9" placeholder="Search contacts…" value={search} onChange={e => setSearch(e.target.value)} />
         </div>
+        <Select value={statusFilter} onValueChange={v => setStatusFilter(v ?? 'all')}>
+          <SelectTrigger className="w-36"><SelectValue placeholder="All statuses" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            {['lead', 'prospect', 'customer', 'churned'].map(s => (
+              <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Button onClick={() => { setEditing(undefined); setDialogOpen(true) }}>
           <Plus className="h-4 w-4 mr-2" />Add Contact
         </Button>
       </div>
 
+      <div className="text-xs text-muted-foreground">{filtered.length} contact{filtered.length !== 1 ? 's' : ''}</div>
+
       <div className="rounded-md border bg-background">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead><TableHead>Email</TableHead>
-              <TableHead>Phone</TableHead><TableHead>Account</TableHead>
-              <TableHead>Status</TableHead><TableHead className="w-20" />
+              <ThHead col="name">Name</ThHead>
+              <ThHead col="email">Email</ThHead>
+              <TableHead>Phone</TableHead>
+              <ThHead col="company">Account</ThHead>
+              <ThHead col="status">Status</ThHead>
+              <ThHead col="createdAt">Added</ThHead>
+              <TableHead className="w-20" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.length === 0 && (
-              <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No contacts found.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No contacts found.</TableCell></TableRow>
             )}
             {filtered.map(c => (
               <TableRow key={c.id}>
@@ -166,6 +232,9 @@ export function ContactsClient({ contacts, companies, workspaceId }: Props) {
                 <TableCell>{c.companyName ?? '—'}</TableCell>
                 <TableCell>
                   <Badge variant="secondary" className={`capitalize ${statusColors[c.status] ?? ''}`}>{c.status}</Badge>
+                </TableCell>
+                <TableCell className="text-muted-foreground text-xs">
+                  {c.createdAt ? format(new Date(c.createdAt), 'MMM d, yyyy') : '—'}
                 </TableCell>
                 <TableCell>
                   <div className="flex gap-1">

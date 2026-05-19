@@ -16,7 +16,7 @@ export default async function TasksPage() {
   return (
     <div className="flex flex-col flex-1 overflow-auto">
       <Header title="My Tasks" />
-      <MyTasksClient tasks={tasks} workspaceId={workspaceId} />
+      <MyTasksClient tasks={tasks} />
     </div>
   )
 }

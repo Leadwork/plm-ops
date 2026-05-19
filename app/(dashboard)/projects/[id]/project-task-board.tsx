@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { createTaskList, deleteTaskList, createTask, updateTask, deleteTask } from '@/lib/actions/projects'
+import { format } from 'date-fns'
+import { createTaskList, deleteTaskList, createTask, updateTask, deleteTask, addTaskComment } from '@/lib/actions/projects'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -10,7 +11,8 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { Plus, Trash2, Pencil, Calendar, User } from 'lucide-react'
+import { Separator } from '@/components/ui/separator'
+import { Plus, Trash2, Pencil, Calendar, User, MessageSquare } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Project, TaskList, Task } from '@/lib/db/schema'
 
@@ -21,6 +23,7 @@ const priorityColors: Record<string, string> = {
 }
 
 type Member = { userId: string; name: string | null }
+type CommentRow = { id: string; content: string; createdAt: Date | null; userId: string; userName: string | null }
 
 interface TaskFormProps {
   workspaceId: string; projectId: string; taskLists: TaskList[]
@@ -32,17 +35,23 @@ function TaskForm({ workspaceId, projectId, taskLists, members, task, defaultLis
   const [priority, setPriority] = useState(task?.priority ?? 'medium')
   const [assigneeId, setAssigneeId] = useState(task?.assigneeId ?? '')
   const [listId, setListId] = useState(task?.taskListId ?? defaultListId ?? taskLists[0]?.id ?? '')
+  const [errors, setErrors] = useState<Record<string, string>>({})
 
-  function handlePriorityChange(v: string | null) { if (v) setPriority(v) }
-  function handleAssigneeChange(v: string | null) { setAssigneeId(v ?? '') }
-  function handleListChange(v: string | null) { setListId(v ?? '') }
+  function validate(title: string) {
+    const e: Record<string, string> = {}
+    if (!title.trim()) e.title = 'Title is required'
+    setErrors(e)
+    return !Object.keys(e).length
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const form = new FormData(e.currentTarget)
+    const title = form.get('title') as string
+    if (!validate(title)) return
     const data = {
       taskListId: listId || undefined,
-      title: form.get('title') as string,
+      title,
       description: (form.get('description') as string) || undefined,
       priority,
       assigneeId: assigneeId || undefined,
@@ -63,6 +72,7 @@ function TaskForm({ workspaceId, projectId, taskLists, members, task, defaultLis
       <div className="space-y-1.5">
         <Label>Title</Label>
         <Input name="title" defaultValue={task?.title} required />
+        {errors.title && <p className="text-xs text-destructive">{errors.title}</p>}
       </div>
       <div className="space-y-1.5">
         <Label>Description</Label>
@@ -71,7 +81,7 @@ function TaskForm({ workspaceId, projectId, taskLists, members, task, defaultLis
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label>Priority</Label>
-          <Select value={priority} onValueChange={handlePriorityChange}>
+          <Select value={priority} onValueChange={v => { if (v) setPriority(v) }}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="low">Low</SelectItem>
@@ -87,7 +97,7 @@ function TaskForm({ workspaceId, projectId, taskLists, members, task, defaultLis
       </div>
       <div className="space-y-1.5">
         <Label>List</Label>
-        <Select value={listId} onValueChange={handleListChange}>
+        <Select value={listId} onValueChange={v => setListId(v ?? '')}>
           <SelectTrigger><SelectValue placeholder="No list" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="">No list</SelectItem>
@@ -97,7 +107,7 @@ function TaskForm({ workspaceId, projectId, taskLists, members, task, defaultLis
       </div>
       <div className="space-y-1.5">
         <Label>Assignee</Label>
-        <Select value={assigneeId} onValueChange={handleAssigneeChange}>
+        <Select value={assigneeId} onValueChange={v => setAssigneeId(v ?? '')}>
           <SelectTrigger><SelectValue placeholder="Unassigned" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="">Unassigned</SelectItem>
@@ -114,6 +124,67 @@ function TaskForm({ workspaceId, projectId, taskLists, members, task, defaultLis
         <Button type="submit" disabled={pending}>{pending ? 'Saving…' : 'Save'}</Button>
       </div>
     </form>
+  )
+}
+
+function CommentsSection({ task, projectId, initialComments }: {
+  task: Task; projectId: string; initialComments: CommentRow[]
+}) {
+  const [comments, setComments] = useState(initialComments)
+  const [commentText, setCommentText] = useState('')
+  const [pending, startTransition] = useTransition()
+
+  function handleAddComment() {
+    if (!commentText.trim()) return
+    startTransition(async () => {
+      try {
+        await addTaskComment(task.id, projectId, commentText.trim())
+        setComments(prev => [...prev, {
+          id: crypto.randomUUID(),
+          content: commentText.trim(),
+          createdAt: new Date(),
+          userId: '',
+          userName: 'You',
+        }])
+        setCommentText('')
+        toast.success('Comment added')
+      } catch { toast.error('Failed to add comment') }
+    })
+  }
+
+  return (
+    <div className="space-y-3">
+      <Separator />
+      <div className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
+        <MessageSquare className="h-3.5 w-3.5" />Comments ({comments.length})
+      </div>
+      {comments.length > 0 && (
+        <ul className="space-y-2">
+          {comments.map(c => (
+            <li key={c.id} className="text-sm bg-muted/40 rounded-lg p-2.5">
+              <div className="flex items-center justify-between mb-1">
+                <span className="font-medium text-xs">{c.userName ?? 'User'}</span>
+                {c.createdAt && (
+                  <span className="text-xs text-muted-foreground">
+                    {format(new Date(c.createdAt), 'MMM d, h:mm a')}
+                  </span>
+                )}
+              </div>
+              <p>{c.content}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="flex gap-2">
+        <Input
+          value={commentText}
+          onChange={e => setCommentText(e.target.value)}
+          placeholder="Add a comment…"
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleAddComment() } }}
+        />
+        <Button size="sm" onClick={handleAddComment} disabled={pending || !commentText.trim()}>Post</Button>
+      </div>
+    </div>
   )
 }
 
@@ -134,12 +205,12 @@ function TaskRow({ task, members, onEdit, onDelete, onToggle }: {
       )}
       {assignee && (
         <span className="text-xs text-muted-foreground flex items-center gap-1">
-          <User className="h-3 w-3" />{assignee.name?.split(' ')[0]}
+          <User className="h-3 w-3" />{assignee.name ?? assignee.userId.slice(0, 8)}
         </span>
       )}
       {task.dueDate && (
         <span className={`text-xs flex items-center gap-1 ${isOverdue ? 'text-red-500' : 'text-muted-foreground'}`}>
-          <Calendar className="h-3 w-3" />{new Date(task.dueDate).toLocaleDateString()}
+          <Calendar className="h-3 w-3" />{format(new Date(task.dueDate), 'MMM d')}
         </span>
       )}
       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -153,9 +224,10 @@ function TaskRow({ task, members, onEdit, onDelete, onToggle }: {
 interface Props {
   project: Project; taskLists: TaskList[]; tasks: Task[]
   members: Member[]; workspaceId: string
+  taskComments: Record<string, CommentRow[]>
 }
 
-export function ProjectTaskBoard({ project, taskLists, tasks, members, workspaceId }: Props) {
+export function ProjectTaskBoard({ project, taskLists, tasks, members, workspaceId, taskComments }: Props) {
   const [, startTransition] = useTransition()
   const [taskDialogOpen, setTaskDialogOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | undefined>()
@@ -210,12 +282,13 @@ export function ProjectTaskBoard({ project, taskLists, tasks, members, workspace
     <div className="flex-1 overflow-auto space-y-6">
       {taskLists.map(list => {
         const listTasks = tasks.filter(t => t.taskListId === list.id)
+        const done = listTasks.filter(t => t.status === 'done').length
         return (
           <div key={list.id} className="rounded-lg border bg-background">
             <div className="flex items-center justify-between px-4 py-3 border-b">
               <div className="flex items-center gap-2">
                 <span className="font-semibold text-sm">{list.name}</span>
-                <Badge variant="secondary" className="text-xs">{listTasks.length}</Badge>
+                <Badge variant="secondary" className="text-xs">{done}/{listTasks.length}</Badge>
               </div>
               <div className="flex gap-1">
                 <Button size="sm" variant="ghost" onClick={() => openAddTask(list.id)}>
@@ -244,8 +317,11 @@ export function ProjectTaskBoard({ project, taskLists, tasks, members, workspace
 
       {unlistedTasks.length > 0 && (
         <div className="rounded-lg border bg-background">
-          <div className="px-4 py-3 border-b">
+          <div className="flex items-center justify-between px-4 py-3 border-b">
             <span className="font-semibold text-sm text-muted-foreground">Unlisted</span>
+            <Button size="sm" variant="ghost" onClick={() => openAddTask()}>
+              <Plus className="h-3.5 w-3.5 mr-1" />Add task
+            </Button>
           </div>
           <div className="p-2 space-y-0.5">
             {unlistedTasks.map(task => (
@@ -262,12 +338,8 @@ export function ProjectTaskBoard({ project, taskLists, tasks, members, workspace
       <div className="flex items-center gap-2">
         {addingList ? (
           <>
-            <Input
-              value={newListName}
-              onChange={e => setNewListName(e.target.value)}
-              placeholder="List name…"
-              className="max-w-xs"
-              autoFocus
+            <Input value={newListName} onChange={e => setNewListName(e.target.value)}
+              placeholder="List name…" className="max-w-xs" autoFocus
               onKeyDown={e => { if (e.key === 'Enter') handleAddList(); if (e.key === 'Escape') setAddingList(false) }}
             />
             <Button size="sm" onClick={handleAddList}>Add</Button>
@@ -284,7 +356,7 @@ export function ProjectTaskBoard({ project, taskLists, tasks, members, workspace
       </div>
 
       <Dialog open={taskDialogOpen} onOpenChange={setTaskDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>{editingTask ? 'Edit Task' : 'New Task'}</DialogTitle></DialogHeader>
           <TaskForm
             workspaceId={workspaceId}
@@ -295,6 +367,13 @@ export function ProjectTaskBoard({ project, taskLists, tasks, members, workspace
             defaultListId={defaultListId}
             onClose={() => setTaskDialogOpen(false)}
           />
+          {editingTask && (
+            <CommentsSection
+              task={editingTask}
+              projectId={project.id}
+              initialComments={taskComments[editingTask.id] ?? []}
+            />
+          )}
         </DialogContent>
       </Dialog>
     </div>

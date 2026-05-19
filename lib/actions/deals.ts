@@ -35,6 +35,13 @@ export async function moveDeal(id: string, stageId: string) {
   revalidatePath('/pipeline')
 }
 
+export async function closeDeal(id: string, status: 'won' | 'lost') {
+  const session = await auth()
+  if (!session?.user?.id) throw new Error('Unauthorized')
+  await db.update(deals).set({ status }).where(eq(deals.id, id))
+  revalidatePath('/pipeline')
+}
+
 export async function deleteDeal(id: string) {
   const session = await auth()
   if (!session?.user?.id) throw new Error('Unauthorized')

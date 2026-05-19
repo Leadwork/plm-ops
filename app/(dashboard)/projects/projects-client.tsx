@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
+import { format } from 'date-fns'
 import { createProject, updateProject, deleteProject } from '@/lib/actions/projects'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,9 +12,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { Plus, Pencil, Trash2, FolderKanban, Calendar } from 'lucide-react'
+import { Plus, Pencil, Trash2, FolderKanban, Calendar, CheckSquare } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Project } from '@/lib/db/schema'
+
+type ProjectWithCounts = Project & { totalTasks: number; doneTasks: number }
 
 const statusConfig = {
   active: { label: 'Active', class: 'bg-green-100 text-green-700' },
@@ -81,7 +84,7 @@ function ProjectForm({ workspaceId, project, onClose }: {
   )
 }
 
-interface Props { projects: Project[]; workspaceId: string }
+interface Props { projects: ProjectWithCounts[]; workspaceId: string }
 
 export function ProjectsClient({ projects, workspaceId }: Props) {
   const [, startTransition] = useTransition()
@@ -113,14 +116,16 @@ export function ProjectsClient({ projects, workspaceId }: Props) {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {projects.map(p => {
             const sc = statusConfig[p.status as keyof typeof statusConfig] ?? statusConfig.active
+            const pct = p.totalTasks > 0 ? Math.round((p.doneTasks / p.totalTasks) * 100) : 0
+            const isOverdue = p.dueDate && p.status !== 'completed' && new Date(p.dueDate) < new Date()
             return (
-              <Card key={p.id} className="group">
+              <Card key={p.id} className="group flex flex-col">
                 <CardHeader className="pb-2">
-                  <div className="flex items-start justify-between">
-                    <CardTitle className="text-base">
+                  <div className="flex items-start justify-between gap-2">
+                    <CardTitle className="text-base leading-snug">
                       <Link href={`/projects/${p.id}`} className="hover:underline">{p.name}</Link>
                     </CardTitle>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                       <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => { setEditing(p); setDialogOpen(true) }}>
                         <Pencil className="h-3 w-3" />
                       </Button>
@@ -131,12 +136,36 @@ export function ProjectsClient({ projects, workspaceId }: Props) {
                   </div>
                   <Badge variant="secondary" className={`w-fit text-xs ${sc.class}`}>{sc.label}</Badge>
                 </CardHeader>
-                <CardContent className="text-sm text-muted-foreground space-y-1">
-                  {p.description && <p className="line-clamp-2">{p.description}</p>}
+                <CardContent className="text-sm text-muted-foreground space-y-3 flex-1 flex flex-col justify-between">
+                  <div className="space-y-2">
+                    {p.description && <p className="line-clamp-2">{p.description}</p>}
+                    {p.totalTasks > 0 && (
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="flex items-center gap-1">
+                            <CheckSquare className="h-3 w-3" />{p.doneTasks}/{p.totalTasks} tasks
+                          </span>
+                          <span>{pct}%</span>
+                        </div>
+                        <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full brand-gradient transition-all"
+                            style={{ width: `${pct}%` }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {p.totalTasks === 0 && (
+                      <p className="text-xs flex items-center gap-1">
+                        <CheckSquare className="h-3 w-3" />No tasks yet
+                      </p>
+                    )}
+                  </div>
                   {p.dueDate && (
-                    <div className="flex items-center gap-1 text-xs">
+                    <div className={`flex items-center gap-1 text-xs ${isOverdue ? 'text-red-500' : ''}`}>
                       <Calendar className="h-3 w-3" />
-                      Due {new Date(p.dueDate).toLocaleDateString()}
+                      Due {format(new Date(p.dueDate), 'MMM d, yyyy')}
+                      {isOverdue && ' — Overdue'}
                     </div>
                   )}
                 </CardContent>

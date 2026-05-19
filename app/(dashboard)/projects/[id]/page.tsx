@@ -4,7 +4,7 @@ import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeft } from 'lucide-react'
 import { ProjectTaskBoard } from './project-task-board'
-import { getProject, getProjectData, getWorkspaceId } from '@/lib/db/queries'
+import { getProject, getProjectData, getTaskComments, getWorkspaceId } from '@/lib/db/queries'
 
 interface Props { params: Promise<{ id: string }> }
 
@@ -21,6 +21,11 @@ export default async function ProjectDetailPage({ params }: Props) {
 
   const { taskLists, tasks, members } = await getProjectData(id, workspaceId)
 
+  const commentEntries = await Promise.all(
+    tasks.map(t => getTaskComments(t.id).then(c => [t.id, c] as const))
+  )
+  const taskComments = Object.fromEntries(commentEntries)
+
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       <Header title={project.name} />
@@ -34,6 +39,7 @@ export default async function ProjectDetailPage({ params }: Props) {
           tasks={tasks}
           members={members}
           workspaceId={workspaceId}
+          taskComments={taskComments}
         />
       </div>
     </div>

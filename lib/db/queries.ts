@@ -1,5 +1,5 @@
 import { db } from './index'
-import { workspaceMembers, contacts, companies, deals, tasks, activities, stages, pipelines, projects, taskLists, users, workspaces } from './schema'
+import { workspaceMembers, contacts, companies, deals, tasks, activities, stages, pipelines, projects, taskLists, taskComments, users, workspaces } from './schema'
 import { eq, lt, desc, asc, and, sql } from 'drizzle-orm'
 
 export async function getWorkspaceId(userId: string) {
@@ -82,6 +82,11 @@ export async function getCompanyDeals(companyId: string) {
     .from(deals).where(eq(deals.companyId, companyId)).orderBy(desc(deals.createdAt))
 }
 
+export async function getCompanyActivities(companyId: string) {
+  return db.select().from(activities).where(eq(activities.companyId, companyId))
+    .orderBy(desc(activities.occurredAt)).limit(20)
+}
+
 export async function getPipelineData(workspaceId: string) {
   const [pipeline] = await db.select().from(pipelines)
     .where(and(eq(pipelines.workspaceId, workspaceId), eq(pipelines.isDefault, true))).limit(1)
@@ -98,7 +103,7 @@ export async function getPipelineData(workspaceId: string) {
       .from(deals)
       .leftJoin(contacts, eq(deals.contactId, contacts.id))
       .leftJoin(companies, eq(deals.companyId, companies.id))
-      .where(and(eq(deals.workspaceId, workspaceId), eq(deals.status, 'open'))),
+      .where(eq(deals.workspaceId, workspaceId)),
     db.select({ id: contacts.id, firstName: contacts.firstName, lastName: contacts.lastName })
       .from(contacts).where(eq(contacts.workspaceId, workspaceId)).orderBy(asc(contacts.firstName)),
     db.select({ id: companies.id, name: companies.name })
@@ -109,7 +114,27 @@ export async function getPipelineData(workspaceId: string) {
 }
 
 export async function getProjects(workspaceId: string) {
-  return db.select().from(projects).where(eq(projects.workspaceId, workspaceId)).orderBy(desc(projects.createdAt))
+  const allProjects = await db.select().from(projects)
+    .where(eq(projects.workspaceId, workspaceId)).orderBy(desc(projects.createdAt))
+
+  if (!allProjects.length) return []
+
+  const taskCounts = await db.select({
+    projectId: tasks.projectId,
+    total: sql<number>`count(*)`,
+    done: sql<number>`count(*) filter (where ${tasks.status} = 'done')`,
+  })
+    .from(tasks)
+    .where(sql`${tasks.projectId} = any(array[${sql.join(allProjects.map(p => sql`${p.id}::uuid`), sql`, `)}])`)
+    .groupBy(tasks.projectId)
+
+  const countMap = Object.fromEntries(taskCounts.map(c => [c.projectId, c]))
+
+  return allProjects.map(p => ({
+    ...p,
+    totalTasks: Number(countMap[p.id]?.total ?? 0),
+    doneTasks: Number(countMap[p.id]?.done ?? 0),
+  }))
 }
 
 export async function getProject(id: string) {
@@ -127,6 +152,17 @@ export async function getProjectData(projectId: string, workspaceId: string) {
       .where(eq(workspaceMembers.workspaceId, workspaceId)),
   ])
   return { taskLists: allTaskLists, tasks: allTasks, members }
+}
+
+export async function getTaskComments(taskId: string) {
+  return db.select({
+    id: taskComments.id, content: taskComments.content, createdAt: taskComments.createdAt,
+    userId: taskComments.userId, userName: users.name,
+  })
+    .from(taskComments)
+    .leftJoin(users, eq(taskComments.userId, users.id))
+    .where(eq(taskComments.taskId, taskId))
+    .orderBy(asc(taskComments.createdAt))
 }
 
 export async function getMyTasks(workspaceId: string, userId: string) {
