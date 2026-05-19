@@ -174,6 +174,7 @@ export async function getContacts(workspaceId: string) {
   return db.select({
     id: contacts.id, firstName: contacts.firstName, lastName: contacts.lastName,
     email: contacts.email, phone: contacts.phone, status: contacts.status,
+    title: contacts.title, notes: contacts.notes,
     createdAt: contacts.createdAt, accountId: contacts.accountId,
     linkedinUrl: contacts.linkedinUrl, companyName: companies.name,
     // Lead score: status(0-40) + email(5) + phone(5) + deals(0-30) + activities(0-20)

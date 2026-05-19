@@ -7,7 +7,7 @@ import { auth } from '@/auth'
 import { revalidatePath } from 'next/cache'
 
 export async function createCompany(data: {
-  workspaceId: string; name: string; website?: string; industry?: string; size?: string
+  workspaceId: string; name: string; website?: string; industry?: string; size?: string; notes?: string
 }) {
   const session = await auth()
   if (!session?.user?.id) throw new Error('Unauthorized')

@@ -67,6 +67,8 @@ export const contacts = pgTable('contacts', {
   phone: text('phone'),
   accountId: uuid('account_id'),
   status: text('status').notNull().default('lead'),
+  title: text('title'),
+  notes: text('notes'),
   linkedinUrl: text('linkedin_url'),
   ownerId: text('owner_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').defaultNow(),
@@ -79,6 +81,7 @@ export const companies = pgTable('companies', {
   website: text('website'),
   industry: text('industry'),
   size: text('size'),
+  notes: text('notes'),
   ownerId: text('owner_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').defaultNow(),
 })

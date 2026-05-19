@@ -5,6 +5,7 @@ import { updateCompany } from '@/lib/actions/companies'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Pencil } from 'lucide-react'
 import { toast } from 'sonner'
@@ -24,6 +25,7 @@ export function AccountDetailActions({ company }: { company: Company }) {
           website: (form.get('website') as string) || undefined,
           industry: (form.get('industry') as string) || undefined,
           size: (form.get('size') as string) || undefined,
+          notes: (form.get('notes') as string) || undefined,
         })
         toast.success('Account updated')
         setOpen(false)
@@ -56,6 +58,10 @@ export function AccountDetailActions({ company }: { company: Company }) {
             <div className="space-y-1.5">
               <Label htmlFor="size">Company size</Label>
               <Input id="size" name="size" placeholder="e.g. 1-10, 11-50…" defaultValue={company.size ?? ''} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="notes">Notes</Label>
+              <Textarea id="notes" name="notes" rows={3} placeholder="Any notes about this account…" defaultValue={company.notes ?? ''} />
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>

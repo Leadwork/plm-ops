@@ -9,6 +9,7 @@ import { revalidatePath } from 'next/cache'
 export async function createContact(data: {
   workspaceId: string; firstName: string; lastName: string
   email?: string; phone?: string; accountId?: string; status?: string
+  title?: string; notes?: string
 }) {
   const session = await auth()
   if (!session?.user?.id) throw new Error('Unauthorized')

@@ -92,9 +92,11 @@ export function ContactDetailActions({ contact, companies }: { contact: Contact;
         await updateContact(contact.id, {
           firstName: form.get('first_name') as string,
           lastName: form.get('last_name') as string,
+          title: (form.get('title') as string) || undefined,
           email: (form.get('email') as string) || undefined,
           phone: (form.get('phone') as string) || undefined,
           linkedinUrl: (form.get('linkedin_url') as string) || undefined,
+          notes: (form.get('notes') as string) || undefined,
           status,
           accountId: accountId || undefined,
         })
@@ -125,6 +127,10 @@ export function ContactDetailActions({ contact, companies }: { contact: Contact;
               </div>
             </div>
             <div className="space-y-1.5">
+              <Label htmlFor="title">Job title</Label>
+              <Input id="title" name="title" placeholder="e.g. CEO, Sales Manager…" defaultValue={contact.title ?? ''} />
+            </div>
+            <div className="space-y-1.5">
               <Label htmlFor="email">Email</Label>
               <Input id="email" name="email" type="email" defaultValue={contact.email ?? ''} />
             </div>
@@ -135,6 +141,10 @@ export function ContactDetailActions({ contact, companies }: { contact: Contact;
             <div className="space-y-1.5">
               <Label htmlFor="linkedin_url">LinkedIn URL</Label>
               <Input id="linkedin_url" name="linkedin_url" placeholder="https://linkedin.com/in/…" defaultValue={contact.linkedinUrl ?? ''} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="notes">Notes</Label>
+              <Textarea id="notes" name="notes" rows={3} placeholder="Any notes…" defaultValue={contact.notes ?? ''} />
             </div>
             <div className="space-y-1.5">
               <Label>Status</Label>

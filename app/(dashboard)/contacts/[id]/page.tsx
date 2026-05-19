@@ -67,6 +67,9 @@ export default async function ContactDetailPage({ params }: Props) {
             <CardHeader><CardTitle className="text-sm">Contact Info</CardTitle></CardHeader>
             <CardContent className="space-y-3 text-sm">
               <Badge variant="secondary" className={`capitalize ${statusColors[contact.status] ?? ''}`}>{contact.status}</Badge>
+              {contact.title && (
+                <p className="font-medium text-foreground">{contact.title}</p>
+              )}
               {contact.email && (
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <Mail className="h-3.5 w-3.5" />
@@ -100,6 +103,15 @@ export default async function ContactDetailPage({ params }: Props) {
               )}
             </CardContent>
           </Card>
+
+          {contact.notes && (
+            <Card>
+              <CardHeader><CardTitle className="text-sm">Notes</CardTitle></CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed">{contact.notes}</p>
+              </CardContent>
+            </Card>
+          )}
 
           <Card>
             <CardHeader><CardTitle className="text-sm">Custom Fields</CardTitle></CardHeader>

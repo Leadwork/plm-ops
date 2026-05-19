@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { Plus, Search, Trash2, Pencil, Globe, Building2, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Company } from '@/lib/db/schema'
@@ -40,6 +41,7 @@ function CompanyForm({ workspaceId, company, onClose }: {
       website: (form.get('website') as string) || undefined,
       industry: industry || undefined,
       size: size || undefined,
+      notes: (form.get('notes') as string) || undefined,
     }
     startTransition(async () => {
       try {
@@ -85,6 +87,10 @@ function CompanyForm({ workspaceId, company, onClose }: {
             ))}
           </SelectContent>
         </Select>
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="notes">Notes</Label>
+        <Textarea id="notes" name="notes" rows={3} placeholder="Any notes about this account…" defaultValue={company?.notes ?? ''} />
       </div>
       <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
@@ -159,12 +165,13 @@ export function AccountsClient({ companies, workspaceId }: Props) {
               <TableHead>Website</TableHead>
               <ThHead col="industry">Industry</ThHead>
               <ThHead col="size">Size</ThHead>
+              <TableHead>Notes</TableHead>
               <TableHead className="w-20" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.length === 0 && (
-              <TableRow><TableCell colSpan={5} className="text-center text-muted-foreground py-8">No accounts found.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-8">No accounts found.</TableCell></TableRow>
             )}
             {filtered.map(a => (
               <TableRow key={a.id}>
@@ -182,6 +189,11 @@ export function AccountsClient({ companies, workspaceId }: Props) {
                 </TableCell>
                 <TableCell className="text-muted-foreground">{a.industry ?? '—'}</TableCell>
                 <TableCell className="text-muted-foreground">{a.size ? `${a.size} employees` : '—'}</TableCell>
+                <TableCell className="max-w-[200px]">
+                  {a.notes
+                    ? <span className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{a.notes}</span>
+                    : <span className="text-muted-foreground">—</span>}
+                </TableCell>
                 <TableCell>
                   <div className="flex gap-1">
                     <Button size="icon" variant="ghost" onClick={() => { setEditing(a); setDialogOpen(true) }}><Pencil className="h-3.5 w-3.5" /></Button>

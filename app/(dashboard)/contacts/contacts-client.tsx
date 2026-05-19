@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
 import { Plus, Search, Trash2, Pencil, ChevronUp, ChevronDown, ChevronsUpDown, Upload } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Company } from '@/lib/db/schema'
@@ -19,6 +20,7 @@ type ContactRow = {
   id: string; firstName: string; lastName: string; email: string | null
   phone: string | null; status: string; accountId: string | null; companyName: string | null
   linkedinUrl: string | null; createdAt: Date | null; score: number | null
+  title: string | null; notes: string | null
 }
 
 type SortKey = 'name' | 'email' | 'status' | 'company' | 'createdAt' | 'score'
@@ -69,9 +71,11 @@ function ContactForm({ workspaceId, companies, contact, onClose }: {
       firstName, lastName,
       email: (form.get('email') as string) || undefined,
       phone: (form.get('phone') as string) || undefined,
+      title: (form.get('title') as string) || undefined,
       status,
       accountId: accountId || undefined,
       linkedinUrl: (form.get('linkedin_url') as string) || undefined,
+      notes: (form.get('notes') as string) || undefined,
     }
     startTransition(async () => {
       try {
@@ -98,6 +102,10 @@ function ContactForm({ workspaceId, companies, contact, onClose }: {
         </div>
       </div>
       <div className="space-y-1.5">
+        <Label htmlFor="title">Job title</Label>
+        <Input id="title" name="title" placeholder="e.g. CEO, Sales Manager…" defaultValue={contact?.title ?? ''} />
+      </div>
+      <div className="space-y-1.5">
         <Label htmlFor="email">Email</Label>
         <Input id="email" name="email" type="email" defaultValue={contact?.email ?? ''} />
       </div>
@@ -108,6 +116,10 @@ function ContactForm({ workspaceId, companies, contact, onClose }: {
       <div className="space-y-1.5">
         <Label htmlFor="linkedin_url">LinkedIn URL</Label>
         <Input id="linkedin_url" name="linkedin_url" placeholder="https://linkedin.com/in/…" defaultValue={contact?.linkedinUrl ?? ''} />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="notes">Notes</Label>
+        <Textarea id="notes" name="notes" rows={3} placeholder="Any notes about this contact…" defaultValue={contact?.notes ?? ''} />
       </div>
       <div className="space-y-1.5">
         <Label>Status</Label>
@@ -249,10 +261,11 @@ export function ContactsClient({ contacts, companies, workspaceId }: Props) {
           <TableHeader>
             <TableRow>
               <ThHead col="name">Name</ThHead>
+              <TableHead>Title</TableHead>
               <ThHead col="email">Email</ThHead>
-              <TableHead>Phone</TableHead>
               <ThHead col="company">Account</ThHead>
               <ThHead col="status">Status</ThHead>
+              <TableHead>Notes</TableHead>
               <ThHead col="score">Score</ThHead>
               <ThHead col="createdAt">Added</ThHead>
               <TableHead className="w-20" />
@@ -260,7 +273,7 @@ export function ContactsClient({ contacts, companies, workspaceId }: Props) {
           </TableHeader>
           <TableBody>
             {filtered.length === 0 && (
-              <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">No contacts found.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={10} className="text-center text-muted-foreground py-8">No contacts found.</TableCell></TableRow>
             )}
             {filtered.map(c => (
               <TableRow key={c.id}>
@@ -269,11 +282,16 @@ export function ContactsClient({ contacts, companies, workspaceId }: Props) {
                     {c.firstName} {c.lastName}
                   </Link>
                 </TableCell>
+                <TableCell className="text-muted-foreground text-sm">{c.title ?? '—'}</TableCell>
                 <TableCell className="text-muted-foreground">{c.email ?? '—'}</TableCell>
-                <TableCell className="text-muted-foreground">{c.phone ?? '—'}</TableCell>
                 <TableCell>{c.companyName ?? '—'}</TableCell>
                 <TableCell>
                   <Badge variant="secondary" className={`capitalize ${statusColors[c.status] ?? ''}`}>{c.status}</Badge>
+                </TableCell>
+                <TableCell className="max-w-[180px]">
+                  {c.notes
+                    ? <span className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">{c.notes}</span>
+                    : <span className="text-muted-foreground">—</span>}
                 </TableCell>
                 <TableCell><ScoreBadge score={c.score} /></TableCell>
                 <TableCell className="text-muted-foreground text-xs">

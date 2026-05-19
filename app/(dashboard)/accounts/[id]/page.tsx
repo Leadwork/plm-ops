@@ -69,6 +69,9 @@ export default async function AccountDetailPage({ params }: Props) {
               {totalValue > 0 && (
                 <p className="text-muted-foreground">Open pipeline: <span className="text-green-600 font-medium">${totalValue.toLocaleString()}</span></p>
               )}
+              {company.notes && (
+                <p className="text-sm text-muted-foreground whitespace-pre-wrap pt-1">{company.notes}</p>
+              )}
               {company.createdAt && (
                 <p className="text-xs text-muted-foreground pt-1">Added {format(new Date(company.createdAt), 'MMM d, yyyy')}</p>
               )}
