@@ -1,15 +1,82 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { updateContact } from '@/lib/actions/contacts'
+import { updateContact, scheduleFollowUp } from '@/lib/actions/contacts'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Pencil } from 'lucide-react'
+import { Pencil, CalendarClock } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Contact, Company } from '@/lib/db/schema'
+
+export function FollowUpButton({ contact, workspaceId }: { contact: Contact; workspaceId: string }) {
+  const [open, setOpen] = useState(false)
+  const [pending, startTransition] = useTransition()
+  const [type, setType] = useState('Call')
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const form = new FormData(e.currentTarget)
+    const dueDate = form.get('due_date') as string
+    const note = form.get('note') as string
+    if (!dueDate) return
+    startTransition(async () => {
+      try {
+        await scheduleFollowUp({
+          workspaceId,
+          contactId: contact.id,
+          contactName: `${contact.firstName} ${contact.lastName}`,
+          type,
+          dueDate,
+          note: note || undefined,
+        })
+        toast.success('Follow-up scheduled')
+        setOpen(false)
+      } catch { toast.error('Failed to schedule') }
+    })
+  }
+
+  return (
+    <>
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+        <CalendarClock className="h-3.5 w-3.5 mr-1.5" />Schedule Follow-up
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Schedule Follow-up</DialogTitle></DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>Type</Label>
+              <Select value={type} onValueChange={v => { if (v) setType(v) }}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {['Call', 'Email', 'Meeting', 'Demo', 'Check-in'].map(t => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="due_date">Due date</Label>
+              <Input id="due_date" name="due_date" type="date" required />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="note">Note (optional)</Label>
+              <Textarea id="note" name="note" rows={2} placeholder="What to discuss…" />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={pending}>{pending ? 'Scheduling…' : 'Schedule'}</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
 
 export function ContactDetailActions({ contact, companies }: { contact: Contact; companies: Company[] }) {
   const [open, setOpen] = useState(false)

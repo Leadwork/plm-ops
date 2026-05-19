@@ -18,11 +18,17 @@ import type { Company } from '@/lib/db/schema'
 type ContactRow = {
   id: string; firstName: string; lastName: string; email: string | null
   phone: string | null; status: string; accountId: string | null; companyName: string | null
-  linkedinUrl: string | null; createdAt: Date | null
+  linkedinUrl: string | null; createdAt: Date | null; score: number | null
 }
 
-type SortKey = 'name' | 'email' | 'status' | 'company' | 'createdAt'
+type SortKey = 'name' | 'email' | 'status' | 'company' | 'createdAt' | 'score'
 type SortDir = 'asc' | 'desc'
+
+function ScoreBadge({ score }: { score: number | null }) {
+  const s = Number(score ?? 0)
+  const color = s >= 70 ? 'bg-green-100 text-green-700' : s >= 40 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-500'
+  return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${color}`}>{s}</span>
+}
 
 const statusColors: Record<string, string> = {
   lead: 'bg-blue-100 text-blue-700', prospect: 'bg-yellow-100 text-yellow-700',
@@ -173,6 +179,10 @@ export function ContactsClient({ contacts, companies, workspaceId }: Props) {
       return matchesSearch && matchesStatus
     })
     list = [...list].sort((a, b) => {
+      if (sortKey === 'score') {
+        const diff = Number(a.score ?? 0) - Number(b.score ?? 0)
+        return sortDir === 'asc' ? diff : -diff
+      }
       let av: string, bv: string
       if (sortKey === 'name') { av = `${a.firstName} ${a.lastName}`; bv = `${b.firstName} ${b.lastName}` }
       else if (sortKey === 'email') { av = a.email ?? ''; bv = b.email ?? '' }
@@ -243,13 +253,14 @@ export function ContactsClient({ contacts, companies, workspaceId }: Props) {
               <TableHead>Phone</TableHead>
               <ThHead col="company">Account</ThHead>
               <ThHead col="status">Status</ThHead>
+              <ThHead col="score">Score</ThHead>
               <ThHead col="createdAt">Added</ThHead>
               <TableHead className="w-20" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.length === 0 && (
-              <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-8">No contacts found.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">No contacts found.</TableCell></TableRow>
             )}
             {filtered.map(c => (
               <TableRow key={c.id}>
@@ -264,6 +275,7 @@ export function ContactsClient({ contacts, companies, workspaceId }: Props) {
                 <TableCell>
                   <Badge variant="secondary" className={`capitalize ${statusColors[c.status] ?? ''}`}>{c.status}</Badge>
                 </TableCell>
+                <TableCell><ScoreBadge score={c.score} /></TableCell>
                 <TableCell className="text-muted-foreground text-xs">
                   {c.createdAt ? format(new Date(c.createdAt), 'MMM d, yyyy') : '—'}
                 </TableCell>

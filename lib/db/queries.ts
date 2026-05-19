@@ -176,6 +176,22 @@ export async function getContacts(workspaceId: string) {
     email: contacts.email, phone: contacts.phone, status: contacts.status,
     createdAt: contacts.createdAt, accountId: contacts.accountId,
     linkedinUrl: contacts.linkedinUrl, companyName: companies.name,
+    // Lead score: status(0-40) + email(5) + phone(5) + deals(0-30) + activities(0-20)
+    score: sql<number>`
+      (case ${contacts.status}
+        when 'customer' then 40 when 'prospect' then 25 when 'lead' then 10 else 0
+       end)
+      + (case when ${contacts.email} is not null then 5 else 0 end)
+      + (case when ${contacts.phone} is not null then 5 else 0 end)
+      + least(
+          (select count(*) from ${deals} d where d.contact_id = ${contacts.id}) * 10,
+          30
+        )
+      + least(
+          (select count(*) from ${activities} a where a.contact_id = ${contacts.id}) * 10,
+          20
+        )
+    `,
   })
     .from(contacts)
     .leftJoin(companies, eq(contacts.accountId, companies.id))

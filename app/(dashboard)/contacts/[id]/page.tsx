@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ChevronLeft, Mail, Phone, Building2, ExternalLink } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { getContact, getContactActivities, getContactDeals, getCompany, getCompanies, getWorkspaceId } from '@/lib/db/queries'
-import { ContactDetailActions } from './contact-detail-actions'
+import { ContactDetailActions, FollowUpButton } from './contact-detail-actions'
 import { ActivityLogger } from '@/components/activities/activity-logger'
 
 interface Props { params: Promise<{ id: string }> }
@@ -53,7 +53,10 @@ export default async function ContactDetailPage({ params }: Props) {
           <Link href="/contacts" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
             <ChevronLeft className="h-4 w-4" /> Back to Contacts
           </Link>
-          <ContactDetailActions contact={contact} companies={allCompanies} />
+          <div className="flex items-center gap-2">
+            <FollowUpButton contact={contact} workspaceId={workspaceId} />
+            <ContactDetailActions contact={contact} companies={allCompanies} />
+          </div>
         </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
