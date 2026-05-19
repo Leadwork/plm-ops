@@ -92,8 +92,40 @@ export async function moveTaskStatus(id: string, status: string, workspaceId: st
 export async function completeTask(id: string) {
   const session = await auth()
   if (!session?.user?.id) throw new Error('Unauthorized')
+
+  const [task] = await db.select().from(tasks).where(eq(tasks.id, id)).limit(1)
   await db.update(tasks).set({ status: 'done' }).where(eq(tasks.id, id))
+
+  if (task?.recurrence && task.dueDate) {
+    const nextDate = getNextOccurrence(task.dueDate, task.recurrence)
+    if (nextDate) {
+      await db.insert(tasks).values({
+        workspaceId: task.workspaceId,
+        projectId: task.projectId,
+        taskListId: task.taskListId,
+        title: task.title,
+        description: task.description,
+        status: 'todo',
+        priority: task.priority,
+        assigneeId: task.assigneeId,
+        dueDate: nextDate,
+        recurrence: task.recurrence,
+      })
+    }
+  }
+
   revalidatePath('/tasks')
+}
+
+function getNextOccurrence(dueDate: string, recurrence: string): string | null {
+  const d = new Date(dueDate)
+  if (isNaN(d.getTime())) return null
+  if (recurrence === 'daily') d.setDate(d.getDate() + 1)
+  else if (recurrence === 'weekly') d.setDate(d.getDate() + 7)
+  else if (recurrence === 'biweekly') d.setDate(d.getDate() + 14)
+  else if (recurrence === 'monthly') d.setMonth(d.getMonth() + 1)
+  else return null
+  return d.toISOString().split('T')[0]
 }
 
 export async function addTaskComment(taskId: string, projectId: string, content: string) {

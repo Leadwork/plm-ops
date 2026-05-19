@@ -18,7 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Separator } from '@/components/ui/separator'
-import { Plus, Trash2, Pencil, Calendar, User, MessageSquare, List, Kanban, GanttChart, GripVertical } from 'lucide-react'
+import { Plus, Trash2, Pencil, Calendar, User, MessageSquare, List, Kanban, GanttChart, GripVertical, Repeat } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import type { Project, TaskList, Task } from '@/lib/db/schema'
@@ -48,6 +48,7 @@ function TaskForm({ workspaceId, projectId, taskLists, members, task, defaultLis
   const [priority, setPriority] = useState(task?.priority ?? 'medium')
   const [assigneeId, setAssigneeId] = useState(task?.assigneeId ?? '')
   const [listId, setListId] = useState(task?.taskListId ?? defaultListId ?? taskLists[0]?.id ?? '')
+  const [recurrence, setRecurrence] = useState(task?.recurrence ?? '')
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -60,6 +61,7 @@ function TaskForm({ workspaceId, projectId, taskLists, members, task, defaultLis
       description: (form.get('description') as string) || undefined,
       priority, assigneeId: assigneeId || undefined,
       dueDate: (form.get('due_date') as string) || undefined,
+      recurrence: recurrence || undefined,
     }
     startTransition(async () => {
       try {
@@ -116,6 +118,19 @@ function TaskForm({ workspaceId, projectId, taskLists, members, task, defaultLis
           <SelectContent>
             <SelectItem value="">Unassigned</SelectItem>
             {members.map(m => <SelectItem key={m.userId} value={m.userId}>{m.name ?? m.userId.slice(0, 8)}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-1.5">
+        <Label>Repeat</Label>
+        <Select value={recurrence} onValueChange={v => setRecurrence(v ?? '')}>
+          <SelectTrigger><SelectValue placeholder="No repeat" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">No repeat</SelectItem>
+            <SelectItem value="daily">Daily</SelectItem>
+            <SelectItem value="weekly">Weekly</SelectItem>
+            <SelectItem value="biweekly">Every 2 weeks</SelectItem>
+            <SelectItem value="monthly">Monthly</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -198,6 +213,11 @@ function TaskRow({ task, members, onEdit, onDelete, onToggle }: {
       {task.dueDate && (
         <span className={`text-xs flex items-center gap-1 ${isOverdue ? 'text-red-500' : 'text-muted-foreground'}`}>
           <Calendar className="h-3 w-3" />{format(new Date(task.dueDate), 'MMM d')}
+        </span>
+      )}
+      {task.recurrence && (
+        <span className="text-xs flex items-center gap-1 text-violet-500" title={`Repeats ${task.recurrence}`}>
+          <Repeat className="h-3 w-3" />
         </span>
       )}
       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

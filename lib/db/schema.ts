@@ -155,6 +155,7 @@ export const tasks = pgTable('tasks', {
   priority: text('priority').notNull().default('medium'),
   assigneeId: text('assignee_id').references(() => users.id, { onDelete: 'set null' }),
   dueDate: date('due_date'),
+  recurrence: text('recurrence'),
   createdAt: timestamp('created_at').defaultNow(),
 })
 
