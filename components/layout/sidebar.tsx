@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import {
   LayoutDashboard, Users, Building2, TrendingUp,
-  FolderKanban, CheckSquare, Settings, LogOut, ChevronRight, Menu, BarChart3,
+  FolderKanban, CheckSquare, Settings, LogOut, ChevronRight, Menu, BarChart3, CalendarDays,
 } from 'lucide-react'
 
 const navItems = [
@@ -19,6 +19,7 @@ const navItems = [
   { href: '/pipeline', label: 'Pipeline', icon: TrendingUp },
   { href: '/projects', label: 'Projects', icon: FolderKanban },
   { href: '/tasks', label: 'My Tasks', icon: CheckSquare },
+  { href: '/calendar', label: 'Calendar', icon: CalendarDays },
   { href: '/reports', label: 'Reports', icon: BarChart3 },
 ]
 

@@ -71,6 +71,13 @@ export async function deleteTask(id: string, projectId: string) {
   revalidatePath(`/projects/${projectId}`)
 }
 
+export async function moveTaskStatus(id: string, status: string, workspaceId: string) {
+  const session = await auth()
+  if (!session?.user?.id) throw new Error('Unauthorized')
+  await db.update(tasks).set({ status }).where(eq(tasks.id, id))
+  revalidatePath('/tasks')
+}
+
 export async function completeTask(id: string) {
   const session = await auth()
   if (!session?.user?.id) throw new Error('Unauthorized')

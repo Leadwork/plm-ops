@@ -102,6 +102,41 @@ export async function getAnalytics(workspaceId: string) {
   return { dealsByStage, wonLostByMonth, contactsByMonth, activitiesByType, taskStats, topDeals, weightedValue, winRate, wonCount, lostCount }
 }
 
+export async function getCalendarData(workspaceId: string, year: number, month: number) {
+  const startStr = `${year}-${String(month).padStart(2, '0')}-01`
+  const lastDay = new Date(year, month, 0).getDate()
+  const endStr = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
+
+  const [calTasks, calDeals] = await Promise.all([
+    db.select({
+      id: tasks.id, title: tasks.title, dueDate: tasks.dueDate,
+      status: tasks.status, priority: tasks.priority,
+      projectId: tasks.projectId, projectName: projects.name,
+    })
+      .from(tasks)
+      .leftJoin(projects, eq(tasks.projectId, projects.id))
+      .where(and(
+        eq(tasks.workspaceId, workspaceId),
+        gte(tasks.dueDate, startStr),
+        sql`${tasks.dueDate} <= ${endStr}`,
+      )),
+    db.select({
+      id: deals.id, title: deals.title, value: deals.value,
+      closeDate: deals.closeDate, status: deals.status,
+      contactFirstName: contacts.firstName, contactLastName: contacts.lastName,
+    })
+      .from(deals)
+      .leftJoin(contacts, eq(deals.contactId, contacts.id))
+      .where(and(
+        eq(deals.workspaceId, workspaceId),
+        gte(deals.closeDate, startStr),
+        sql`${deals.closeDate} <= ${endStr}`,
+      )),
+  ])
+
+  return { tasks: calTasks, deals: calDeals }
+}
+
 export async function getWorkspaceId(userId: string) {
   const [m] = await db.select({ workspaceId: workspaceMembers.workspaceId })
     .from(workspaceMembers).where(eq(workspaceMembers.userId, userId)).limit(1)
