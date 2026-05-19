@@ -2,8 +2,9 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { createUserAndWorkspace } from '@/lib/actions/workspace'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -12,44 +13,26 @@ import { toast } from 'sonner'
 
 export default function RegisterPage() {
   const router = useRouter()
-  const supabase = createClient()
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setLoading(true)
     const form = new FormData(e.currentTarget)
-    const fullName = form.get('name') as string
+    const name = form.get('name') as string
     const email = form.get('email') as string
     const password = form.get('password') as string
 
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: { data: { full_name: fullName } },
-    })
-
-    if (error) {
-      toast.error(error.message)
-      setLoading(false)
-      return
-    }
-
-    if (data.user) {
-      // Create workspace + profile via server action
-      const res = await fetch('/api/workspace/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: fullName + "'s Workspace", userId: data.user.id, fullName }),
-      })
-      if (!res.ok) {
-        toast.error('Failed to create workspace')
-        setLoading(false)
-        return
-      }
-      toast.success('Account created! Redirecting…')
+    try {
+      await createUserAndWorkspace(name, email, password)
+      const result = await signIn('credentials', { email, password, redirect: false })
+      if (result?.error) throw new Error('Sign-in failed after registration')
+      toast.success('Account created!')
       router.push('/dashboard')
       router.refresh()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Registration failed')
+      setLoading(false)
     }
   }
 

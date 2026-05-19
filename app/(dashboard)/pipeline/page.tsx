@@ -1,46 +1,40 @@
-import { createClient } from '@/lib/supabase/server'
+import { auth } from '@/auth'
+import { redirect } from 'next/navigation'
 import { Header } from '@/components/layout/header'
 import { PipelineBoard } from '@/components/kanban/pipeline-board'
+import { getPipelineData, getWorkspaceId } from '@/lib/db/queries'
 
 export default async function PipelinePage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const session = await auth()
+  if (!session?.user?.id) redirect('/login')
 
-  const { data: profile } = await supabase
-    .from('profiles').select('workspace_id').eq('id', user!.id).single()
+  const workspaceId = await getWorkspaceId(session.user.id)
+  if (!workspaceId) redirect('/register')
 
-  const workspaceId = profile?.workspace_id!
+  const data = await getPipelineData(workspaceId)
 
-  const { data: pipeline } = await supabase
-    .from('pipelines')
-    .select('id')
-    .eq('workspace_id', workspaceId)
-    .eq('is_default', true)
-    .single()
-
-  const pipelineId = pipeline?.id!
-
-  const [{ data: stages }, { data: deals }, { data: contacts }, { data: accounts }] = await Promise.all([
-    supabase.from('stages').select('*').eq('pipeline_id', pipelineId).order('position'),
-    supabase.from('deals')
-      .select('*, contacts(first_name, last_name), accounts(name)')
-      .eq('workspace_id', workspaceId)
-      .eq('status', 'open'),
-    supabase.from('contacts').select('*').eq('workspace_id', workspaceId).order('first_name'),
-    supabase.from('accounts').select('*').eq('workspace_id', workspaceId).order('name'),
-  ])
+  if (!data) {
+    return (
+      <div className="flex flex-col flex-1 overflow-auto">
+        <Header title="Sales Pipeline" />
+        <div className="flex-1 flex items-center justify-center text-muted-foreground">
+          No pipeline configured.
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       <Header title="Sales Pipeline" />
       <div className="flex-1 p-6 overflow-hidden">
         <PipelineBoard
-          stages={stages ?? []}
-          deals={(deals ?? []) as Parameters<typeof PipelineBoard>[0]['deals']}
-          contacts={contacts ?? []}
-          accounts={accounts ?? []}
+          stages={data.stages}
+          deals={data.deals}
+          contacts={data.contacts}
+          companies={data.companies}
           workspaceId={workspaceId}
-          pipelineId={pipelineId}
+          pipelineId={data.pipeline.id}
         />
       </div>
     </div>

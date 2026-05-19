@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useTransition } from 'react'
 import {
   DndContext, DragOverlay, PointerSensor, useSensor, useSensors,
   type DragStartEvent, type DragEndEvent,
@@ -8,7 +8,7 @@ import {
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { createClient } from '@/lib/supabase/client'
+import { createDeal, updateDeal, moveDeal, deleteDeal } from '@/lib/actions/deals'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
@@ -17,24 +17,27 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Plus, GripVertical, Pencil, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { useRouter } from 'next/navigation'
-import type { Stage, Deal, Contact, Account } from '@/lib/types'
+import type { Stage } from '@/lib/db/schema'
 
-type DealWithRelations = Deal & {
-  contacts: { first_name: string; last_name: string } | null
-  accounts: { name: string } | null
+type DealRow = {
+  id: string; title: string; value: string | null; status: string
+  stageId: string; closeDate: string | null
+  contactFirstName: string | null; contactLastName: string | null; companyName: string | null
 }
+
+type ContactRow = { id: string; firstName: string; lastName: string }
+type CompanyRow = { id: string; name: string }
 
 interface PipelineBoardProps {
   stages: Stage[]
-  deals: DealWithRelations[]
-  contacts: Contact[]
-  accounts: Account[]
+  deals: DealRow[]
+  contacts: ContactRow[]
+  companies: CompanyRow[]
   workspaceId: string
   pipelineId: string
 }
 
-function DealCard({ deal, onEdit, onDelete }: { deal: DealWithRelations; onEdit: () => void; onDelete: () => void }) {
+function DealCard({ deal, onEdit, onDelete }: { deal: DealRow; onEdit: () => void; onDelete: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: deal.id })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
 
@@ -46,15 +49,15 @@ function DealCard({ deal, onEdit, onDelete }: { deal: DealWithRelations; onEdit:
         </button>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium truncate">{deal.title}</p>
-          {deal.contacts && (
-            <p className="text-xs text-muted-foreground">{deal.contacts.first_name} {deal.contacts.last_name}</p>
+          {deal.contactFirstName && (
+            <p className="text-xs text-muted-foreground">{deal.contactFirstName} {deal.contactLastName}</p>
           )}
-          {deal.accounts && <p className="text-xs text-muted-foreground">{deal.accounts.name}</p>}
+          {deal.companyName && <p className="text-xs text-muted-foreground">{deal.companyName}</p>}
           {deal.value != null && (
-            <p className="text-xs font-semibold text-green-600 mt-1">${deal.value.toLocaleString()}</p>
+            <p className="text-xs font-semibold text-green-600 mt-1">${Number(deal.value).toLocaleString()}</p>
           )}
-          {deal.close_date && (
-            <p className="text-xs text-muted-foreground">Close: {new Date(deal.close_date).toLocaleDateString()}</p>
+          {deal.closeDate && (
+            <p className="text-xs text-muted-foreground">Close: {new Date(deal.closeDate).toLocaleDateString()}</p>
           )}
         </div>
         <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -66,43 +69,40 @@ function DealCard({ deal, onEdit, onDelete }: { deal: DealWithRelations; onEdit:
   )
 }
 
-function DealForm({ workspaceId, pipelineId, stages, contacts, accounts, deal, defaultStageId, onClose }: {
+function DealForm({ workspaceId, pipelineId, stages, contacts, companies, deal, defaultStageId, onClose }: {
   workspaceId: string; pipelineId: string; stages: Stage[]
-  contacts: Contact[]; accounts: Account[]
-  deal?: DealWithRelations; defaultStageId?: string; onClose: () => void
+  contacts: ContactRow[]; companies: CompanyRow[]
+  deal?: DealRow; defaultStageId?: string; onClose: () => void
 }) {
-  const router = useRouter()
-  const supabase = createClient()
-  const [loading, setLoading] = useState(false)
-  const [stageId, setStageId] = useState(deal?.stage_id ?? defaultStageId ?? stages[0]?.id ?? '')
-  const [contactId, setContactId] = useState(deal?.contact_id ?? '')
-  const [accountId, setAccountId] = useState(deal?.account_id ?? '')
+  const [pending, startTransition] = useTransition()
+  const [stageId, setStageId] = useState(deal?.stageId ?? defaultStageId ?? stages[0]?.id ?? '')
+  const [contactId, setContactId] = useState('')
+  const [companyId, setCompanyId] = useState('')
 
   function handleStageChange(v: string | null) { if (v) setStageId(v) }
   function handleContactChange(v: string | null) { setContactId(v ?? '') }
-  function handleAccountChange(v: string | null) { setAccountId(v ?? '') }
+  function handleCompanyChange(v: string | null) { setCompanyId(v ?? '') }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    setLoading(true)
     const form = new FormData(e.currentTarget)
-    const payload = {
-      workspace_id: workspaceId,
-      pipeline_id: pipelineId,
-      stage_id: stageId,
+    const valueStr = form.get('value') as string
+    const data = {
+      workspaceId, pipelineId, stageId,
       title: form.get('title') as string,
-      value: form.get('value') ? Number(form.get('value')) : null,
-      close_date: (form.get('close_date') as string) || null,
-      contact_id: contactId || null,
-      account_id: accountId || null,
-      status: 'open' as const,
+      value: valueStr ? Number(valueStr) : undefined,
+      closeDate: (form.get('close_date') as string) || undefined,
+      contactId: contactId || undefined,
+      companyId: companyId || undefined,
     }
-    const { error } = deal
-      ? await supabase.from('deals').update(payload).eq('id', deal.id)
-      : await supabase.from('deals').insert(payload)
-    if (error) toast.error(error.message)
-    else { toast.success(deal ? 'Deal updated' : 'Deal created'); router.refresh(); onClose() }
-    setLoading(false)
+    startTransition(async () => {
+      try {
+        if (deal) await updateDeal(deal.id, { stageId, title: data.title, value: data.value?.toString(), closeDate: data.closeDate })
+        else await createDeal(data)
+        toast.success(deal ? 'Deal updated' : 'Deal created')
+        onClose()
+      } catch { toast.error('Failed to save deal') }
+    })
   }
 
   return (
@@ -118,7 +118,7 @@ function DealForm({ workspaceId, pipelineId, stages, contacts, accounts, deal, d
         </div>
         <div className="space-y-1.5">
           <Label>Close date</Label>
-          <Input name="close_date" type="date" defaultValue={deal?.close_date?.slice(0, 10) ?? ''} />
+          <Input name="close_date" type="date" defaultValue={deal?.closeDate?.slice(0, 10) ?? ''} />
         </div>
       </div>
       <div className="space-y-1.5">
@@ -134,50 +134,49 @@ function DealForm({ workspaceId, pipelineId, stages, contacts, accounts, deal, d
           <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="">None</SelectItem>
-            {contacts.map(c => <SelectItem key={c.id} value={c.id}>{c.first_name} {c.last_name}</SelectItem>)}
+            {contacts.map(c => <SelectItem key={c.id} value={c.id}>{c.firstName} {c.lastName}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
       <div className="space-y-1.5">
         <Label>Account</Label>
-        <Select value={accountId} onValueChange={handleAccountChange}>
+        <Select value={companyId} onValueChange={handleCompanyChange}>
           <SelectTrigger><SelectValue placeholder="None" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="">None</SelectItem>
-            {accounts.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+            {companies.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
       <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-        <Button type="submit" disabled={loading}>{loading ? 'Saving…' : 'Save'}</Button>
+        <Button type="submit" disabled={pending}>{pending ? 'Saving…' : 'Save'}</Button>
       </div>
     </form>
   )
 }
 
-export function PipelineBoard({ stages, deals: initialDeals, contacts, accounts, workspaceId, pipelineId }: PipelineBoardProps) {
-  const router = useRouter()
-  const supabase = createClient()
+export function PipelineBoard({ stages, deals: initialDeals, contacts, companies, workspaceId, pipelineId }: PipelineBoardProps) {
+  const [, startTransition] = useTransition()
   const [deals, setDeals] = useState(initialDeals)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingDeal, setEditingDeal] = useState<DealWithRelations | undefined>()
+  const [editingDeal, setEditingDeal] = useState<DealRow | undefined>()
   const [defaultStageId, setDefaultStageId] = useState<string | undefined>()
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
 
   const dealsForStage = useCallback((stageId: string) =>
-    deals.filter(d => d.stage_id === stageId), [deals])
+    deals.filter(d => d.stageId === stageId), [deals])
 
   const stageValue = useCallback((stageId: string) =>
-    dealsForStage(stageId).reduce((sum, d) => sum + (d.value ?? 0), 0), [dealsForStage])
+    dealsForStage(stageId).reduce((sum, d) => sum + Number(d.value ?? 0), 0), [dealsForStage])
 
   function handleDragStart(event: DragStartEvent) {
     setActiveId(event.active.id as string)
   }
 
-  async function handleDragEnd(event: DragEndEvent) {
+  function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     setActiveId(null)
     if (!over || active.id === over.id) return
@@ -185,29 +184,26 @@ export function PipelineBoard({ stages, deals: initialDeals, contacts, accounts,
     const draggedDeal = deals.find(d => d.id === active.id)
     if (!draggedDeal) return
 
-    // over.id can be a stage id or a deal id — find the target stage
     const targetStage = stages.find(s => s.id === over.id)
     const targetDeal = deals.find(d => d.id === over.id)
-    const newStageId = targetStage?.id ?? targetDeal?.stage_id
+    const newStageId = targetStage?.id ?? targetDeal?.stageId
 
-    if (!newStageId || newStageId === draggedDeal.stage_id) return
+    if (!newStageId || newStageId === draggedDeal.stageId) return
 
-    setDeals(prev => prev.map(d => d.id === draggedDeal.id ? { ...d, stage_id: newStageId } : d))
+    setDeals(prev => prev.map(d => d.id === draggedDeal.id ? { ...d, stageId: newStageId } : d))
 
-    const { error } = await supabase.from('deals').update({ stage_id: newStageId }).eq('id', draggedDeal.id)
-    if (error) {
-      toast.error('Failed to move deal')
-      setDeals(initialDeals)
-    } else {
-      router.refresh()
-    }
+    startTransition(async () => {
+      try { await moveDeal(draggedDeal.id, newStageId) }
+      catch { toast.error('Failed to move deal'); setDeals(initialDeals) }
+    })
   }
 
-  async function deleteDeal(id: string) {
+  function handleDelete(id: string) {
     if (!confirm('Delete this deal?')) return
-    const { error } = await supabase.from('deals').delete().eq('id', id)
-    if (error) toast.error(error.message)
-    else { toast.success('Deal deleted'); router.refresh() }
+    startTransition(async () => {
+      try { await deleteDeal(id); toast.success('Deal deleted') }
+      catch { toast.error('Failed to delete') }
+    })
   }
 
   const activeDeal = activeId ? deals.find(d => d.id === activeId) : null
@@ -225,25 +221,20 @@ export function PipelineBoard({ stages, deals: initialDeals, contacts, accounts,
               <div className="text-xs text-muted-foreground">${stageValue(stage.id).toLocaleString()}</div>
             </div>
 
-            <div
-              className="flex-1 rounded-lg bg-muted/40 p-2 space-y-2 min-h-[200px]"
-              onDragOver={e => e.preventDefault()}
-              data-stage-id={stage.id}
-            >
+            <div className="flex-1 rounded-lg bg-muted/40 p-2 space-y-2 min-h-[200px]" data-stage-id={stage.id}>
               <SortableContext items={dealsForStage(stage.id).map(d => d.id)} strategy={verticalListSortingStrategy}>
                 {dealsForStage(stage.id).map(deal => (
                   <DealCard
                     key={deal.id}
                     deal={deal}
                     onEdit={() => { setEditingDeal(deal); setDialogOpen(true) }}
-                    onDelete={() => deleteDeal(deal.id)}
+                    onDelete={() => handleDelete(deal.id)}
                   />
                 ))}
               </SortableContext>
 
               <Button
-                variant="ghost"
-                size="sm"
+                variant="ghost" size="sm"
                 className="w-full text-muted-foreground hover:text-foreground"
                 onClick={() => { setEditingDeal(undefined); setDefaultStageId(stage.id); setDialogOpen(true) }}
               >
@@ -258,22 +249,20 @@ export function PipelineBoard({ stages, deals: initialDeals, contacts, accounts,
         {activeDeal && (
           <div className="bg-background border rounded-lg p-3 shadow-lg rotate-2 w-[260px]">
             <p className="text-sm font-medium">{activeDeal.title}</p>
-            {activeDeal.value != null && <p className="text-xs text-green-600 font-semibold">${activeDeal.value.toLocaleString()}</p>}
+            {activeDeal.value != null && <p className="text-xs text-green-600 font-semibold">${Number(activeDeal.value).toLocaleString()}</p>}
           </div>
         )}
       </DragOverlay>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingDeal ? 'Edit Deal' : 'New Deal'}</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>{editingDeal ? 'Edit Deal' : 'New Deal'}</DialogTitle></DialogHeader>
           <DealForm
             workspaceId={workspaceId}
             pipelineId={pipelineId}
             stages={stages}
             contacts={contacts}
-            accounts={accounts}
+            companies={companies}
             deal={editingDeal}
             defaultStageId={defaultStageId}
             onClose={() => setDialogOpen(false)}

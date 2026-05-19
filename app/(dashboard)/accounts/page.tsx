@@ -1,26 +1,22 @@
-import { createClient } from '@/lib/supabase/server'
+import { auth } from '@/auth'
+import { redirect } from 'next/navigation'
 import { Header } from '@/components/layout/header'
 import { AccountsClient } from './accounts-client'
+import { getCompanies, getWorkspaceId } from '@/lib/db/queries'
 
 export default async function AccountsPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const session = await auth()
+  if (!session?.user?.id) redirect('/login')
 
-  const { data: profile } = await supabase
-    .from('profiles').select('workspace_id').eq('id', user!.id).single()
+  const workspaceId = await getWorkspaceId(session.user.id)
+  if (!workspaceId) redirect('/register')
 
-  const workspaceId = profile?.workspace_id!
-
-  const { data: accounts } = await supabase
-    .from('accounts')
-    .select('*')
-    .eq('workspace_id', workspaceId)
-    .order('name')
+  const companies = await getCompanies(workspaceId)
 
   return (
     <div className="flex flex-col flex-1 overflow-auto">
       <Header title="Accounts" />
-      <AccountsClient accounts={accounts ?? []} workspaceId={workspaceId} />
+      <AccountsClient companies={companies} workspaceId={workspaceId} />
     </div>
   )
 }

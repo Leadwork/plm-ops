@@ -1,34 +1,25 @@
-import { createClient } from '@/lib/supabase/server'
+import { auth } from '@/auth'
 import { Header } from '@/components/layout/header'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ChevronLeft } from 'lucide-react'
 import { ProjectTaskBoard } from './project-task-board'
+import { getProject, getProjectData, getWorkspaceId } from '@/lib/db/queries'
 
 interface Props { params: Promise<{ id: string }> }
 
 export default async function ProjectDetailPage({ params }: Props) {
   const { id } = await params
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const session = await auth()
+  if (!session?.user?.id) redirect('/login')
 
-  const { data: profile } = await supabase
-    .from('profiles').select('workspace_id').eq('id', user!.id).single()
+  const workspaceId = await getWorkspaceId(session.user.id)
+  if (!workspaceId) redirect('/register')
 
-  const workspaceId = profile?.workspace_id!
-
-  const { data: project } = await supabase
-    .from('projects').select('*').eq('id', id).single()
-
+  const project = await getProject(id)
   if (!project) notFound()
 
-  const [{ data: taskLists }, { data: tasks }, { data: members }] = await Promise.all([
-    supabase.from('task_lists').select('*').eq('project_id', id).order('position'),
-    supabase.from('tasks').select('*').eq('project_id', id).order('created_at'),
-    supabase.from('workspace_members')
-      .select('user_id, profiles(full_name)')
-      .eq('workspace_id', workspaceId),
-  ])
+  const { taskLists, tasks, members } = await getProjectData(id, workspaceId)
 
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
@@ -39,9 +30,9 @@ export default async function ProjectDetailPage({ params }: Props) {
         </Link>
         <ProjectTaskBoard
           project={project}
-          taskLists={taskLists ?? []}
-          tasks={tasks ?? []}
-          members={(members ?? []) as unknown as { user_id: string; profiles: { full_name: string | null } | null }[]}
+          taskLists={taskLists}
+          tasks={tasks}
+          members={members}
           workspaceId={workspaceId}
         />
       </div>

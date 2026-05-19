@@ -1,8 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { useState, useTransition } from 'react'
+import { createTaskList, deleteTaskList, createTask, updateTask, deleteTask } from '@/lib/actions/projects'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -13,15 +12,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { Plus, Trash2, Pencil, Calendar, User } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Project, TaskList, Task } from '@/lib/types'
+import type { Project, TaskList, Task } from '@/lib/db/schema'
 
-const priorityColors = {
+const priorityColors: Record<string, string> = {
   low: 'bg-gray-100 text-gray-600',
   medium: 'bg-blue-100 text-blue-700',
   high: 'bg-red-100 text-red-700',
 }
 
-interface Member { user_id: string; profiles: { full_name: string | null } | null }
+type Member = { userId: string; name: string | null }
 
 interface TaskFormProps {
   workspaceId: string; projectId: string; taskLists: TaskList[]
@@ -29,40 +28,34 @@ interface TaskFormProps {
 }
 
 function TaskForm({ workspaceId, projectId, taskLists, members, task, defaultListId, onClose }: TaskFormProps) {
-  const router = useRouter()
-  const supabase = createClient()
-  const [loading, setLoading] = useState(false)
-  const [priority, setPriority] = useState<Task['priority']>(task?.priority ?? 'medium')
-  const [assigneeId, setAssigneeId] = useState(task?.assignee_id ?? '')
-  const [listId, setListId] = useState(task?.task_list_id ?? defaultListId ?? taskLists[0]?.id ?? '')
+  const [pending, startTransition] = useTransition()
+  const [priority, setPriority] = useState(task?.priority ?? 'medium')
+  const [assigneeId, setAssigneeId] = useState(task?.assigneeId ?? '')
+  const [listId, setListId] = useState(task?.taskListId ?? defaultListId ?? taskLists[0]?.id ?? '')
 
-  function handlePriorityChange(v: string | null) { if (v) setPriority(v as Task['priority']) }
+  function handlePriorityChange(v: string | null) { if (v) setPriority(v) }
   function handleAssigneeChange(v: string | null) { setAssigneeId(v ?? '') }
   function handleListChange(v: string | null) { setListId(v ?? '') }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    setLoading(true)
     const form = new FormData(e.currentTarget)
-    const commonFields = {
-      task_list_id: listId || null,
+    const data = {
+      taskListId: listId || undefined,
       title: form.get('title') as string,
-      description: (form.get('description') as string) || null,
+      description: (form.get('description') as string) || undefined,
       priority,
-      assignee_id: assigneeId || null,
-      due_date: (form.get('due_date') as string) || null,
+      assigneeId: assigneeId || undefined,
+      dueDate: (form.get('due_date') as string) || undefined,
     }
-    const { error } = task
-      ? await supabase.from('tasks').update(commonFields).eq('id', task.id)
-      : await supabase.from('tasks').insert({
-          ...commonFields,
-          workspace_id: workspaceId,
-          project_id: projectId,
-          status: 'todo' as Task['status'],
-        })
-    if (error) toast.error(error.message)
-    else { toast.success(task ? 'Task updated' : 'Task created'); router.refresh(); onClose() }
-    setLoading(false)
+    startTransition(async () => {
+      try {
+        if (task) await updateTask(task.id, projectId, data)
+        else await createTask({ workspaceId, projectId, ...data })
+        toast.success(task ? 'Task updated' : 'Task created')
+        onClose()
+      } catch { toast.error('Failed to save task') }
+    })
   }
 
   return (
@@ -89,7 +82,7 @@ function TaskForm({ workspaceId, projectId, taskLists, members, task, defaultLis
         </div>
         <div className="space-y-1.5">
           <Label>Due date</Label>
-          <Input name="due_date" type="date" defaultValue={task?.due_date?.slice(0, 10) ?? ''} />
+          <Input name="due_date" type="date" defaultValue={task?.dueDate?.slice(0, 10) ?? ''} />
         </div>
       </div>
       <div className="space-y-1.5">
@@ -109,8 +102,8 @@ function TaskForm({ workspaceId, projectId, taskLists, members, task, defaultLis
           <SelectContent>
             <SelectItem value="">Unassigned</SelectItem>
             {members.map(m => (
-              <SelectItem key={m.user_id} value={m.user_id}>
-                {m.profiles?.full_name ?? m.user_id.slice(0, 8)}
+              <SelectItem key={m.userId} value={m.userId}>
+                {m.name ?? m.userId.slice(0, 8)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -118,7 +111,7 @@ function TaskForm({ workspaceId, projectId, taskLists, members, task, defaultLis
       </div>
       <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-        <Button type="submit" disabled={loading}>{loading ? 'Saving…' : 'Save'}</Button>
+        <Button type="submit" disabled={pending}>{pending ? 'Saving…' : 'Save'}</Button>
       </div>
     </form>
   )
@@ -128,25 +121,25 @@ function TaskRow({ task, members, onEdit, onDelete, onToggle }: {
   task: Task; members: Member[]
   onEdit: () => void; onDelete: () => void; onToggle: () => void
 }) {
-  const assignee = members.find(m => m.user_id === task.assignee_id)
+  const assignee = members.find(m => m.userId === task.assigneeId)
   const isDone = task.status === 'done'
-  const isOverdue = task.due_date && !isDone && new Date(task.due_date) < new Date()
+  const isOverdue = task.dueDate && !isDone && new Date(task.dueDate) < new Date()
 
   return (
     <div className="flex items-center gap-3 p-2 rounded hover:bg-accent/50 group text-sm">
       <Checkbox checked={isDone} onCheckedChange={onToggle} />
       <span className={`flex-1 ${isDone ? 'line-through text-muted-foreground' : ''}`}>{task.title}</span>
       {task.priority !== 'medium' && (
-        <Badge variant="secondary" className={`text-xs capitalize ${priorityColors[task.priority]}`}>{task.priority}</Badge>
+        <Badge variant="secondary" className={`text-xs capitalize ${priorityColors[task.priority] ?? ''}`}>{task.priority}</Badge>
       )}
       {assignee && (
         <span className="text-xs text-muted-foreground flex items-center gap-1">
-          <User className="h-3 w-3" />{assignee.profiles?.full_name?.split(' ')[0]}
+          <User className="h-3 w-3" />{assignee.name?.split(' ')[0]}
         </span>
       )}
-      {task.due_date && (
+      {task.dueDate && (
         <span className={`text-xs flex items-center gap-1 ${isOverdue ? 'text-red-500' : 'text-muted-foreground'}`}>
-          <Calendar className="h-3 w-3" />{new Date(task.due_date).toLocaleDateString()}
+          <Calendar className="h-3 w-3" />{new Date(task.dueDate).toLocaleDateString()}
         </span>
       )}
       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -163,47 +156,48 @@ interface Props {
 }
 
 export function ProjectTaskBoard({ project, taskLists, tasks, members, workspaceId }: Props) {
-  const router = useRouter()
-  const supabase = createClient()
+  const [, startTransition] = useTransition()
   const [taskDialogOpen, setTaskDialogOpen] = useState(false)
   const [editingTask, setEditingTask] = useState<Task | undefined>()
   const [defaultListId, setDefaultListId] = useState<string | undefined>()
   const [newListName, setNewListName] = useState('')
   const [addingList, setAddingList] = useState(false)
 
-  const unlistedTasks = tasks.filter(t => !t.task_list_id)
+  const unlistedTasks = tasks.filter(t => !t.taskListId)
 
-  async function addList() {
+  function handleAddList() {
     if (!newListName.trim()) return
-    const { error } = await supabase.from('task_lists').insert({
-      project_id: project.id,
-      name: newListName.trim(),
-      position: taskLists.length,
+    startTransition(async () => {
+      try {
+        await createTaskList(project.id, newListName.trim(), taskLists.length)
+        setNewListName('')
+        setAddingList(false)
+      } catch { toast.error('Failed to create list') }
     })
-    if (error) toast.error(error.message)
-    else { setNewListName(''); setAddingList(false); router.refresh() }
   }
 
-  async function deleteList(id: string) {
+  function handleDeleteList(id: string) {
     if (!confirm('Delete this list and all its tasks?')) return
-    await supabase.from('tasks').delete().eq('task_list_id', id)
-    const { error } = await supabase.from('task_lists').delete().eq('id', id)
-    if (error) toast.error(error.message)
-    else { toast.success('List deleted'); router.refresh() }
+    startTransition(async () => {
+      try { await deleteTaskList(id, project.id); toast.success('List deleted') }
+      catch { toast.error('Failed to delete list') }
+    })
   }
 
-  async function deleteTask(id: string) {
+  function handleDeleteTask(id: string) {
     if (!confirm('Delete this task?')) return
-    const { error } = await supabase.from('tasks').delete().eq('id', id)
-    if (error) toast.error(error.message)
-    else { toast.success('Task deleted'); router.refresh() }
+    startTransition(async () => {
+      try { await deleteTask(id, project.id); toast.success('Task deleted') }
+      catch { toast.error('Failed to delete task') }
+    })
   }
 
-  async function toggleTask(task: Task) {
-    const newStatus: Task['status'] = task.status === 'done' ? 'todo' : 'done'
-    const { error } = await supabase.from('tasks').update({ status: newStatus }).eq('id', task.id)
-    if (error) toast.error(error.message)
-    else router.refresh()
+  function handleToggleTask(task: Task) {
+    const newStatus = task.status === 'done' ? 'todo' : 'done'
+    startTransition(async () => {
+      try { await updateTask(task.id, project.id, { status: newStatus }) }
+      catch { toast.error('Failed to update task') }
+    })
   }
 
   function openAddTask(listId?: string) {
@@ -215,7 +209,7 @@ export function ProjectTaskBoard({ project, taskLists, tasks, members, workspace
   return (
     <div className="flex-1 overflow-auto space-y-6">
       {taskLists.map(list => {
-        const listTasks = tasks.filter(t => t.task_list_id === list.id)
+        const listTasks = tasks.filter(t => t.taskListId === list.id)
         return (
           <div key={list.id} className="rounded-lg border bg-background">
             <div className="flex items-center justify-between px-4 py-3 border-b">
@@ -227,7 +221,7 @@ export function ProjectTaskBoard({ project, taskLists, tasks, members, workspace
                 <Button size="sm" variant="ghost" onClick={() => openAddTask(list.id)}>
                   <Plus className="h-3.5 w-3.5 mr-1" />Add task
                 </Button>
-                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => deleteList(list.id)}>
+                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleDeleteList(list.id)}>
                   <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
                 </Button>
               </div>
@@ -239,8 +233,8 @@ export function ProjectTaskBoard({ project, taskLists, tasks, members, workspace
               {listTasks.map(task => (
                 <TaskRow key={task.id} task={task} members={members}
                   onEdit={() => { setEditingTask(task); setTaskDialogOpen(true) }}
-                  onDelete={() => deleteTask(task.id)}
-                  onToggle={() => toggleTask(task)}
+                  onDelete={() => handleDeleteTask(task.id)}
+                  onToggle={() => handleToggleTask(task)}
                 />
               ))}
             </div>
@@ -257,8 +251,8 @@ export function ProjectTaskBoard({ project, taskLists, tasks, members, workspace
             {unlistedTasks.map(task => (
               <TaskRow key={task.id} task={task} members={members}
                 onEdit={() => { setEditingTask(task); setTaskDialogOpen(true) }}
-                onDelete={() => deleteTask(task.id)}
-                onToggle={() => toggleTask(task)}
+                onDelete={() => handleDeleteTask(task.id)}
+                onToggle={() => handleToggleTask(task)}
               />
             ))}
           </div>
@@ -274,9 +268,9 @@ export function ProjectTaskBoard({ project, taskLists, tasks, members, workspace
               placeholder="List name…"
               className="max-w-xs"
               autoFocus
-              onKeyDown={e => { if (e.key === 'Enter') addList(); if (e.key === 'Escape') setAddingList(false) }}
+              onKeyDown={e => { if (e.key === 'Enter') handleAddList(); if (e.key === 'Escape') setAddingList(false) }}
             />
-            <Button size="sm" onClick={addList}>Add</Button>
+            <Button size="sm" onClick={handleAddList}>Add</Button>
             <Button size="sm" variant="ghost" onClick={() => setAddingList(false)}>Cancel</Button>
           </>
         ) : (
@@ -291,9 +285,7 @@ export function ProjectTaskBoard({ project, taskLists, tasks, members, workspace
 
       <Dialog open={taskDialogOpen} onOpenChange={setTaskDialogOpen}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingTask ? 'Edit Task' : 'New Task'}</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>{editingTask ? 'Edit Task' : 'New Task'}</DialogTitle></DialogHeader>
           <TaskForm
             workspaceId={workspaceId}
             projectId={project.id}

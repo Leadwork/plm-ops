@@ -1,20 +1,13 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
+import { signOut } from 'next-auth/react'
 import { cn } from '@/lib/utils'
-import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import {
-  LayoutDashboard,
-  Users,
-  Building2,
-  TrendingUp,
-  FolderKanban,
-  CheckSquare,
-  Settings,
-  LogOut,
-  ChevronRight,
+  LayoutDashboard, Users, Building2, TrendingUp,
+  FolderKanban, CheckSquare, Settings, LogOut, ChevronRight,
 } from 'lucide-react'
 
 const navItems = [
@@ -28,14 +21,6 @@ const navItems = [
 
 export function Sidebar() {
   const pathname = usePathname()
-  const router = useRouter()
-  const supabase = createClient()
-
-  async function signOut() {
-    await supabase.auth.signOut()
-    router.push('/login')
-    router.refresh()
-  }
 
   return (
     <aside className="flex h-full w-60 flex-col border-r bg-sidebar">
@@ -81,7 +66,7 @@ export function Sidebar() {
         <Button
           variant="ghost"
           className="w-full justify-start gap-3 px-3 text-muted-foreground hover:text-destructive"
-          onClick={signOut}
+          onClick={() => signOut({ callbackUrl: '/login' })}
         >
           <LogOut className="h-4 w-4" />
           Sign out

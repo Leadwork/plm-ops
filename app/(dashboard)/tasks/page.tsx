@@ -1,28 +1,22 @@
-import { createClient } from '@/lib/supabase/server'
+import { auth } from '@/auth'
+import { redirect } from 'next/navigation'
 import { Header } from '@/components/layout/header'
 import { MyTasksClient } from './my-tasks-client'
+import { getMyTasks, getWorkspaceId } from '@/lib/db/queries'
 
 export default async function TasksPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const session = await auth()
+  if (!session?.user?.id) redirect('/login')
 
-  const { data: profile } = await supabase
-    .from('profiles').select('workspace_id').eq('id', user!.id).single()
+  const workspaceId = await getWorkspaceId(session.user.id)
+  if (!workspaceId) redirect('/register')
 
-  const workspaceId = profile?.workspace_id!
-
-  const { data: tasks } = await supabase
-    .from('tasks')
-    .select('*, projects(name)')
-    .eq('workspace_id', workspaceId)
-    .eq('assignee_id', user!.id)
-    .neq('status', 'done')
-    .order('due_date', { ascending: true, nullsFirst: false })
+  const tasks = await getMyTasks(workspaceId, session.user.id)
 
   return (
     <div className="flex flex-col flex-1 overflow-auto">
       <Header title="My Tasks" />
-      <MyTasksClient tasks={(tasks ?? []) as Parameters<typeof MyTasksClient>[0]['tasks']} workspaceId={workspaceId} />
+      <MyTasksClient tasks={tasks} workspaceId={workspaceId} />
     </div>
   )
 }

@@ -1,9 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { createCompany, updateCompany, deleteCompany } from '@/lib/actions/companies'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -11,76 +10,77 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Plus, Search, Trash2, Pencil, Globe, Building2 } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Account } from '@/lib/types'
+import type { Company } from '@/lib/db/schema'
 
-interface Props { accounts: Account[]; workspaceId: string }
-
-function AccountForm({ workspaceId, account, onClose }: { workspaceId: string; account?: Account; onClose: () => void }) {
-  const router = useRouter()
-  const supabase = createClient()
-  const [loading, setLoading] = useState(false)
+function CompanyForm({ workspaceId, company, onClose }: {
+  workspaceId: string; company?: Company; onClose: () => void
+}) {
+  const [pending, startTransition] = useTransition()
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    setLoading(true)
     const form = new FormData(e.currentTarget)
-    const payload = {
-      workspace_id: workspaceId,
+    const data = {
+      workspaceId,
       name: form.get('name') as string,
-      website: (form.get('website') as string) || null,
-      industry: (form.get('industry') as string) || null,
-      size: (form.get('size') as string) || null,
+      website: (form.get('website') as string) || undefined,
+      industry: (form.get('industry') as string) || undefined,
+      size: (form.get('size') as string) || undefined,
     }
-    const { error } = account
-      ? await supabase.from('accounts').update(payload).eq('id', account.id)
-      : await supabase.from('accounts').insert(payload)
-    if (error) toast.error(error.message)
-    else { toast.success(account ? 'Account updated' : 'Account created'); router.refresh(); onClose() }
-    setLoading(false)
+    startTransition(async () => {
+      try {
+        if (company) await updateCompany(company.id, data)
+        else await createCompany(data)
+        toast.success(company ? 'Account updated' : 'Account created')
+        onClose()
+      } catch { toast.error('Failed to save account') }
+    })
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="space-y-1.5">
         <Label htmlFor="name">Company name</Label>
-        <Input id="name" name="name" defaultValue={account?.name} required />
+        <Input id="name" name="name" defaultValue={company?.name} required />
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="website">Website</Label>
-        <Input id="website" name="website" placeholder="https://" defaultValue={account?.website ?? ''} />
+        <Input id="website" name="website" placeholder="https://" defaultValue={company?.website ?? ''} />
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="industry">Industry</Label>
-        <Input id="industry" name="industry" defaultValue={account?.industry ?? ''} />
+        <Input id="industry" name="industry" defaultValue={company?.industry ?? ''} />
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="size">Company size</Label>
-        <Input id="size" name="size" placeholder="e.g. 1-10, 11-50…" defaultValue={account?.size ?? ''} />
+        <Input id="size" name="size" placeholder="e.g. 1-10, 11-50…" defaultValue={company?.size ?? ''} />
       </div>
       <div className="flex justify-end gap-2 pt-2">
         <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-        <Button type="submit" disabled={loading}>{loading ? 'Saving…' : 'Save'}</Button>
+        <Button type="submit" disabled={pending}>{pending ? 'Saving…' : 'Save'}</Button>
       </div>
     </form>
   )
 }
 
-export function AccountsClient({ accounts, workspaceId }: Props) {
-  const router = useRouter()
-  const supabase = createClient()
+interface Props { companies: Company[]; workspaceId: string }
+
+export function AccountsClient({ companies, workspaceId }: Props) {
+  const [, startTransition] = useTransition()
   const [search, setSearch] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editing, setEditing] = useState<Account | undefined>()
+  const [editing, setEditing] = useState<Company | undefined>()
 
-  const filtered = accounts.filter(a =>
+  const filtered = companies.filter(a =>
     `${a.name} ${a.industry ?? ''}`.toLowerCase().includes(search.toLowerCase())
   )
 
-  async function deleteAccount(id: string) {
+  function handleDelete(id: string) {
     if (!confirm('Delete this account?')) return
-    const { error } = await supabase.from('accounts').delete().eq('id', id)
-    if (error) toast.error(error.message)
-    else { toast.success('Account deleted'); router.refresh() }
+    startTransition(async () => {
+      try { await deleteCompany(id); toast.success('Account deleted') }
+      catch { toast.error('Failed to delete') }
+    })
   }
 
   return (
@@ -99,10 +99,8 @@ export function AccountsClient({ accounts, workspaceId }: Props) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Website</TableHead>
-              <TableHead>Industry</TableHead>
-              <TableHead>Size</TableHead>
+              <TableHead>Name</TableHead><TableHead>Website</TableHead>
+              <TableHead>Industry</TableHead><TableHead>Size</TableHead>
               <TableHead className="w-20" />
             </TableRow>
           </TableHeader>
@@ -127,7 +125,7 @@ export function AccountsClient({ accounts, workspaceId }: Props) {
                 <TableCell>
                   <div className="flex gap-1">
                     <Button size="icon" variant="ghost" onClick={() => { setEditing(a); setDialogOpen(true) }}><Pencil className="h-3.5 w-3.5" /></Button>
-                    <Button size="icon" variant="ghost" onClick={() => deleteAccount(a.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
+                    <Button size="icon" variant="ghost" onClick={() => handleDelete(a.id)}><Trash2 className="h-3.5 w-3.5 text-destructive" /></Button>
                   </div>
                 </TableCell>
               </TableRow>
@@ -138,10 +136,8 @@ export function AccountsClient({ accounts, workspaceId }: Props) {
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editing ? 'Edit Account' : 'New Account'}</DialogTitle>
-          </DialogHeader>
-          <AccountForm workspaceId={workspaceId} account={editing} onClose={() => setDialogOpen(false)} />
+          <DialogHeader><DialogTitle>{editing ? 'Edit Account' : 'New Account'}</DialogTitle></DialogHeader>
+          <CompanyForm workspaceId={workspaceId} company={editing} onClose={() => setDialogOpen(false)} />
         </DialogContent>
       </Dialog>
     </div>

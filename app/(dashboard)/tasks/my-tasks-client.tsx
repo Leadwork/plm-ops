@@ -1,60 +1,59 @@
 'use client'
 
-import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
+import { useTransition } from 'react'
+import { completeTask } from '@/lib/actions/projects'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { CheckSquare, Calendar, FolderKanban } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Task } from '@/lib/types'
 
-type TaskWithProject = Task & { projects: { name: string } | null }
+type TaskRow = {
+  id: string; title: string; status: string; priority: string
+  dueDate: string | null; projectId: string | null; projectName: string | null
+}
 
-const priorityColors = {
+const priorityColors: Record<string, string> = {
   low: 'bg-gray-100 text-gray-600',
   medium: 'bg-blue-100 text-blue-700',
   high: 'bg-red-100 text-red-700',
 }
 
-interface Props { tasks: TaskWithProject[]; workspaceId: string }
+interface Props { tasks: TaskRow[]; workspaceId: string }
 
 export function MyTasksClient({ tasks }: Props) {
-  const router = useRouter()
-  const supabase = createClient()
+  const [, startTransition] = useTransition()
 
-  const overdue = tasks.filter(t => t.due_date && new Date(t.due_date) < new Date())
+  const overdue = tasks.filter(t => t.dueDate && new Date(t.dueDate) < new Date())
   const dueToday = tasks.filter(t => {
-    if (!t.due_date) return false
-    const d = new Date(t.due_date)
-    const today = new Date()
-    return d.toDateString() === today.toDateString()
+    if (!t.dueDate) return false
+    return new Date(t.dueDate).toDateString() === new Date().toDateString()
   })
-  const upcoming = tasks.filter(t => !t.due_date || new Date(t.due_date) >= new Date())
+  const upcoming = tasks.filter(t => !t.dueDate || new Date(t.dueDate) >= new Date())
 
-  async function toggleTask(task: TaskWithProject) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase.from('tasks') as any).update({ status: 'done' }).eq('id', task.id)
-    if (error) toast.error(error.message)
-    else { toast.success('Task marked done'); router.refresh() }
+  function handleComplete(id: string) {
+    startTransition(async () => {
+      try { await completeTask(id); toast.success('Task marked done') }
+      catch { toast.error('Failed to update task') }
+    })
   }
 
-  function TaskItem({ task }: { task: TaskWithProject }) {
-    const isOverdue = task.due_date && new Date(task.due_date) < new Date()
+  function TaskItem({ task }: { task: TaskRow }) {
+    const isOverdue = task.dueDate && new Date(task.dueDate) < new Date()
     return (
-      <div className="flex items-center gap-3 p-3 rounded-lg border bg-background hover:bg-accent/30 group">
-        <Checkbox onCheckedChange={() => toggleTask(task)} />
+      <div className="flex items-center gap-3 p-3 rounded-lg border bg-background hover:bg-accent/30">
+        <Checkbox onCheckedChange={() => handleComplete(task.id)} />
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium truncate">{task.title}</p>
-          {task.projects && (
+          {task.projectName && (
             <p className="text-xs text-muted-foreground flex items-center gap-1">
-              <FolderKanban className="h-3 w-3" />{task.projects.name}
+              <FolderKanban className="h-3 w-3" />{task.projectName}
             </p>
           )}
         </div>
-        <Badge variant="secondary" className={`text-xs capitalize shrink-0 ${priorityColors[task.priority]}`}>{task.priority}</Badge>
-        {task.due_date && (
+        <Badge variant="secondary" className={`text-xs capitalize shrink-0 ${priorityColors[task.priority] ?? ''}`}>{task.priority}</Badge>
+        {task.dueDate && (
           <span className={`text-xs flex items-center gap-1 shrink-0 ${isOverdue ? 'text-red-500' : 'text-muted-foreground'}`}>
-            <Calendar className="h-3 w-3" />{new Date(task.due_date).toLocaleDateString()}
+            <Calendar className="h-3 w-3" />{new Date(task.dueDate).toLocaleDateString()}
           </span>
         )}
       </div>

@@ -2,8 +2,8 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -12,7 +12,6 @@ import { toast } from 'sonner'
 
 export default function LoginPage() {
   const router = useRouter()
-  const supabase = createClient()
   const [loading, setLoading] = useState(false)
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -20,13 +19,14 @@ export default function LoginPage() {
     setLoading(true)
     const form = new FormData(e.currentTarget)
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email: form.get('email') as string,
-      password: form.get('password') as string,
+    const result = await signIn('credentials', {
+      email: form.get('email'),
+      password: form.get('password'),
+      redirect: false,
     })
 
-    if (error) {
-      toast.error(error.message)
+    if (result?.error) {
+      toast.error('Invalid email or password')
       setLoading(false)
       return
     }

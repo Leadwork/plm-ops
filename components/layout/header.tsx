@@ -1,19 +1,10 @@
-import { createClient } from '@/lib/supabase/server'
+import { auth } from '@/auth'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 
-interface HeaderProps {
-  title: string
-}
-
-export async function Header({ title }: HeaderProps) {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  const initials = (user?.user_metadata?.full_name as string | undefined)
-    ?.split(' ')
-    .map((n: string) => n[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 2) ?? '??'
+export async function Header({ title }: { title: string }) {
+  const session = await auth()
+  const initials = session?.user?.name
+    ?.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) ?? '??'
 
   return (
     <header className="flex h-14 items-center justify-between border-b bg-background px-6">
