@@ -23,12 +23,21 @@ export function Sidebar() {
   const pathname = usePathname()
 
   return (
-    <aside className="flex h-full w-60 flex-col border-r bg-sidebar">
-      <div className="flex h-14 items-center border-b px-4">
-        <span className="font-semibold text-sm tracking-tight">ProLeadMaker</span>
+    <aside className="flex h-full w-60 flex-col bg-sidebar">
+      {/* Logo */}
+      <div className="flex h-14 items-center px-4 border-b border-sidebar-border">
+        <div className="flex items-center gap-2">
+          <div className="h-7 w-7 rounded-lg brand-gradient flex items-center justify-center shrink-0">
+            <span className="text-white text-xs font-bold">P</span>
+          </div>
+          <span className="font-bold text-sm tracking-tight brand-gradient-text">
+            ProLeadMaker
+          </span>
+        </div>
       </div>
 
-      <nav className="flex-1 overflow-y-auto p-2 space-y-0.5">
+      {/* Nav */}
+      <nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
         {navItems.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(href + '/')
           return (
@@ -36,28 +45,29 @@ export function Sidebar() {
               key={href}
               href={href}
               className={cn(
-                'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150',
                 active
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                  ? 'brand-gradient text-white shadow-sm'
+                  : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent'
               )}
             >
               <Icon className="h-4 w-4 shrink-0" />
               {label}
-              {active && <ChevronRight className="ml-auto h-3 w-3" />}
+              {active && <ChevronRight className="ml-auto h-3 w-3 opacity-70" />}
             </Link>
           )
         })}
       </nav>
 
-      <div className="border-t p-2 space-y-0.5">
+      {/* Bottom */}
+      <div className="border-t border-sidebar-border p-3 space-y-0.5">
         <Link
           href="/settings"
           className={cn(
-            'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+            'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-150',
             pathname.startsWith('/settings')
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+              ? 'brand-gradient text-white shadow-sm'
+              : 'text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent'
           )}
         >
           <Settings className="h-4 w-4" />
@@ -65,7 +75,7 @@ export function Sidebar() {
         </Link>
         <Button
           variant="ghost"
-          className="w-full justify-start gap-3 px-3 text-muted-foreground hover:text-destructive"
+          className="w-full justify-start gap-3 px-3 text-sidebar-foreground/50 hover:text-red-400 hover:bg-sidebar-accent"
           onClick={() => signOut({ callbackUrl: '/login' })}
         >
           <LogOut className="h-4 w-4" />
