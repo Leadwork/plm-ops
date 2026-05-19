@@ -167,6 +167,25 @@ export const taskComments = pgTable('task_comments', {
   createdAt: timestamp('created_at').defaultNow(),
 })
 
+export const customFieldDefinitions = pgTable('custom_field_definitions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
+  entityType: text('entity_type').notNull(), // 'contacts' | 'deals' | 'companies'
+  label: text('label').notNull(),
+  fieldType: text('field_type').notNull().default('text'), // 'text' | 'number' | 'date' | 'url' | 'select'
+  options: text('options'), // JSON array of strings for select type
+  position: integer('position').notNull().default(0),
+  createdAt: timestamp('created_at').defaultNow(),
+})
+
+export const customFieldValues = pgTable('custom_field_values', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  entityId: text('entity_id').notNull(), // contact/deal/company id
+  fieldDefId: uuid('field_def_id').notNull().references(() => customFieldDefinitions.id, { onDelete: 'cascade' }),
+  value: text('value'),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, t => [unique().on(t.entityId, t.fieldDefId)])
+
 export const notifications = pgTable('notifications', {
   id: uuid('id').primaryKey().defaultRandom(),
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
@@ -193,3 +212,5 @@ export type TaskList = typeof taskLists.$inferSelect
 export type Task = typeof tasks.$inferSelect
 export type TaskComment = typeof taskComments.$inferSelect
 export type Notification = typeof notifications.$inferSelect
+export type CustomFieldDefinition = typeof customFieldDefinitions.$inferSelect
+export type CustomFieldValue = typeof customFieldValues.$inferSelect

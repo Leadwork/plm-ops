@@ -2,7 +2,7 @@ import { auth } from '@/auth'
 import { redirect } from 'next/navigation'
 import { Header } from '@/components/layout/header'
 import { SettingsClient } from './settings-client'
-import { getWorkspace, getWorkspaceId, getWorkspaceMembers } from '@/lib/db/queries'
+import { getWorkspace, getWorkspaceId, getWorkspaceMembers, getCustomFieldDefinitions } from '@/lib/db/queries'
 import { db } from '@/lib/db'
 import { stages, pipelines } from '@/lib/db/schema'
 import { eq, and, asc } from 'drizzle-orm'
@@ -14,9 +14,10 @@ export default async function SettingsPage() {
   const workspaceId = await getWorkspaceId(session.user.id)
   if (!workspaceId) redirect('/register')
 
-  const [workspace, members] = await Promise.all([
+  const [workspace, members, customFields] = await Promise.all([
     getWorkspace(workspaceId),
     getWorkspaceMembers(workspaceId),
+    getCustomFieldDefinitions(workspaceId),
   ])
 
   const [pipeline] = await db.select().from(pipelines)
@@ -35,6 +36,7 @@ export default async function SettingsPage() {
         stages={pipelineStages}
         pipelineId={pipeline?.id ?? ''}
         currentUserId={session.user.id}
+        customFields={customFields}
       />
     </div>
   )

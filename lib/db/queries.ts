@@ -1,6 +1,6 @@
 import { db } from './index'
-import { workspaceMembers, contacts, companies, deals, tasks, activities, stages, pipelines, projects, taskLists, taskComments, users, workspaces } from './schema'
-import { eq, lt, desc, asc, and, sql, gte, ilike, or } from 'drizzle-orm'
+import { workspaceMembers, contacts, companies, deals, tasks, activities, stages, pipelines, projects, taskLists, taskComments, users, workspaces, customFieldDefinitions, customFieldValues } from './schema'
+import { eq, lt, desc, asc, and, sql, gte, ilike, or, inArray } from 'drizzle-orm'
 
 export async function getAnalytics(workspaceId: string) {
   const twelveMonthsAgo = new Date()
@@ -343,6 +343,20 @@ export async function getWorkspaceMembers(workspaceId: string) {
 export async function getWorkspace(workspaceId: string) {
   const [w] = await db.select().from(workspaces).where(eq(workspaces.id, workspaceId)).limit(1)
   return w ?? null
+}
+
+export async function getCustomFieldDefinitions(workspaceId: string, entityType?: string) {
+  const conditions = entityType
+    ? and(eq(customFieldDefinitions.workspaceId, workspaceId), eq(customFieldDefinitions.entityType, entityType))
+    : eq(customFieldDefinitions.workspaceId, workspaceId)
+  return db.select().from(customFieldDefinitions)
+    .where(conditions)
+    .orderBy(asc(customFieldDefinitions.position), asc(customFieldDefinitions.createdAt))
+}
+
+export async function getCustomFieldValues(entityId: string) {
+  return db.select().from(customFieldValues)
+    .where(eq(customFieldValues.entityId, entityId))
 }
 
 export async function globalSearch(workspaceId: string, query: string) {

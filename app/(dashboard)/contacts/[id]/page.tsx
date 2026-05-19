@@ -6,9 +6,10 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ChevronLeft, Mail, Phone, Building2, ExternalLink } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
-import { getContact, getContactActivities, getContactDeals, getCompany, getCompanies, getWorkspaceId } from '@/lib/db/queries'
+import { getContact, getContactActivities, getContactDeals, getCompany, getCompanies, getWorkspaceId, getCustomFieldDefinitions, getCustomFieldValues } from '@/lib/db/queries'
 import { ContactDetailActions, FollowUpButton } from './contact-detail-actions'
 import { ActivityLogger } from '@/components/activities/activity-logger'
+import { CustomFieldsSection } from '@/components/custom-fields/custom-fields-section'
 
 interface Props { params: Promise<{ id: string }> }
 
@@ -34,11 +35,13 @@ export default async function ContactDetailPage({ params }: Props) {
   const workspaceId = await getWorkspaceId(session.user.id)
   if (!workspaceId) redirect('/login')
 
-  const [contact, activities, deals, allCompanies] = await Promise.all([
+  const [contact, activities, deals, allCompanies, contactFields, contactFieldValues] = await Promise.all([
     getContact(id),
     getContactActivities(id),
     getContactDeals(id),
     getCompanies(workspaceId),
+    getCustomFieldDefinitions(workspaceId, 'contacts'),
+    getCustomFieldValues(id),
   ])
 
   if (!contact) notFound()
@@ -95,6 +98,18 @@ export default async function ContactDetailPage({ params }: Props) {
                   Added {format(new Date(contact.createdAt), 'MMM d, yyyy')}
                 </p>
               )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle className="text-sm">Custom Fields</CardTitle></CardHeader>
+            <CardContent>
+              <CustomFieldsSection
+                entityId={id}
+                fields={contactFields}
+                values={contactFieldValues}
+                entityType="contacts"
+              />
             </CardContent>
           </Card>
 

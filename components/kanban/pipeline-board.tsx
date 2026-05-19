@@ -18,7 +18,8 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Plus, GripVertical, Pencil, Trash2, Trophy, X, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
-import type { Stage } from '@/lib/db/schema'
+import { DealCustomFields } from '@/components/custom-fields/deal-custom-fields'
+import type { Stage, CustomFieldDefinition } from '@/lib/db/schema'
 
 type DealRow = {
   id: string; title: string; value: string | null; status: string
@@ -36,6 +37,7 @@ interface PipelineBoardProps {
   companies: CompanyRow[]
   workspaceId: string
   pipelineId: string
+  dealFields?: CustomFieldDefinition[]
 }
 
 function DealCard({ deal, onEdit, onDelete, onWon, onLost }: {
@@ -192,7 +194,7 @@ function DealForm({ workspaceId, pipelineId, stages, contacts, companies, deal, 
   )
 }
 
-export function PipelineBoard({ stages, deals: initialDeals, contacts, companies, workspaceId, pipelineId }: PipelineBoardProps) {
+export function PipelineBoard({ stages, deals: initialDeals, contacts, companies, workspaceId, pipelineId, dealFields = [] }: PipelineBoardProps) {
   const [, startTransition] = useTransition()
   const [deals, setDeals] = useState(initialDeals)
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -325,13 +327,18 @@ export function PipelineBoard({ stages, deals: initialDeals, contacts, companies
       </DndContext>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>{editingDeal ? 'Edit Deal' : 'New Deal'}</DialogTitle></DialogHeader>
           <DealForm
             workspaceId={workspaceId} pipelineId={pipelineId} stages={stages}
             contacts={contacts} companies={companies} deal={editingDeal}
             defaultStageId={defaultStageId} onClose={() => setDialogOpen(false)}
           />
+          {dealFields.length > 0 && editingDeal && (
+            <div className="border-t pt-4">
+              <DealCustomFields dealId={editingDeal.id} fields={dealFields} />
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

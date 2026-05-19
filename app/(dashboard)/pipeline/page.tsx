@@ -2,7 +2,7 @@ import { auth } from '@/auth'
 import { redirect } from 'next/navigation'
 import { Header } from '@/components/layout/header'
 import { PipelineBoard } from '@/components/kanban/pipeline-board'
-import { getPipelineData, getWorkspaceId } from '@/lib/db/queries'
+import { getPipelineData, getWorkspaceId, getCustomFieldDefinitions } from '@/lib/db/queries'
 
 export default async function PipelinePage() {
   const session = await auth()
@@ -11,7 +11,10 @@ export default async function PipelinePage() {
   const workspaceId = await getWorkspaceId(session.user.id)
   if (!workspaceId) redirect('/register')
 
-  const data = await getPipelineData(workspaceId)
+  const [data, dealFields] = await Promise.all([
+    getPipelineData(workspaceId),
+    getCustomFieldDefinitions(workspaceId, 'deals'),
+  ])
 
   if (!data) {
     return (
@@ -35,6 +38,7 @@ export default async function PipelinePage() {
           companies={data.companies}
           workspaceId={workspaceId}
           pipelineId={data.pipeline.id}
+          dealFields={dealFields}
         />
       </div>
     </div>

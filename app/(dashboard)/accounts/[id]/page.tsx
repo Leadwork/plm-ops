@@ -6,9 +6,10 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { ChevronLeft, Globe, Users, TrendingUp } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
-import { getCompany, getCompanyContacts, getCompanyDeals, getCompanyActivities, getWorkspaceId } from '@/lib/db/queries'
+import { getCompany, getCompanyContacts, getCompanyDeals, getCompanyActivities, getWorkspaceId, getCustomFieldDefinitions, getCustomFieldValues } from '@/lib/db/queries'
 import { AccountDetailActions } from './account-detail-actions'
 import { ActivityLogger } from '@/components/activities/activity-logger'
+import { CustomFieldsSection } from '@/components/custom-fields/custom-fields-section'
 
 interface Props { params: Promise<{ id: string }> }
 
@@ -29,11 +30,13 @@ export default async function AccountDetailPage({ params }: Props) {
   const workspaceId = await getWorkspaceId(session.user.id)
   if (!workspaceId) redirect('/login')
 
-  const [company, contacts, deals, activities] = await Promise.all([
+  const [company, contacts, deals, activities, companyFields, companyFieldValues] = await Promise.all([
     getCompany(id),
     getCompanyContacts(id),
     getCompanyDeals(id),
     getCompanyActivities(id),
+    getCustomFieldDefinitions(workspaceId, 'companies'),
+    getCustomFieldValues(id),
   ])
 
   if (!company) notFound()
@@ -69,6 +72,18 @@ export default async function AccountDetailPage({ params }: Props) {
               {company.createdAt && (
                 <p className="text-xs text-muted-foreground pt-1">Added {format(new Date(company.createdAt), 'MMM d, yyyy')}</p>
               )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader><CardTitle className="text-sm">Custom Fields</CardTitle></CardHeader>
+            <CardContent>
+              <CustomFieldsSection
+                entityId={id}
+                fields={companyFields}
+                values={companyFieldValues}
+                entityType="companies"
+              />
             </CardContent>
           </Card>
 

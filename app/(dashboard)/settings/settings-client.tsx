@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { updateWorkspaceName, inviteMember, createStage, updateStage, deleteStage } from '@/lib/actions/workspace'
+import { createCustomField, deleteCustomField } from '@/lib/actions/custom-fields'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -9,9 +10,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { toast } from 'sonner'
-import { Crown, User, Plus, Pencil, Trash2 } from 'lucide-react'
-import type { Workspace, Stage } from '@/lib/db/schema'
+import { Crown, User, Plus, Pencil, Trash2, Type, Hash, Calendar, Link2, List } from 'lucide-react'
+import type { Workspace, Stage, CustomFieldDefinition } from '@/lib/db/schema'
 
 interface Props {
   workspace: Workspace | null
@@ -19,9 +22,24 @@ interface Props {
   stages: Stage[]
   pipelineId: string
   currentUserId: string
+  customFields: CustomFieldDefinition[]
 }
 
-export function SettingsClient({ workspace, members, stages: initialStages, pipelineId, currentUserId }: Props) {
+const FIELD_TYPES = [
+  { value: 'text', label: 'Text', icon: Type },
+  { value: 'number', label: 'Number', icon: Hash },
+  { value: 'date', label: 'Date', icon: Calendar },
+  { value: 'url', label: 'URL / Link', icon: Link2 },
+  { value: 'select', label: 'Dropdown', icon: List },
+]
+
+const ENTITY_TYPES = [
+  { value: 'contacts', label: 'Contacts' },
+  { value: 'deals', label: 'Deals' },
+  { value: 'companies', label: 'Companies' },
+]
+
+export function SettingsClient({ workspace, members, stages: initialStages, pipelineId, currentUserId, customFields: initialCustomFields }: Props) {
   const [, startTransition] = useTransition()
   const [workspaceName, setWorkspaceName] = useState(workspace?.name ?? '')
   const [inviteEmail, setInviteEmail] = useState('')
@@ -29,6 +47,16 @@ export function SettingsClient({ workspace, members, stages: initialStages, pipe
   const [stageDialog, setStageDialog] = useState(false)
   const [editingStage, setEditingStage] = useState<Stage | undefined>()
   const [stagePending, startStageTransition] = useTransition()
+
+  // Custom fields state
+  const [customFields, setCustomFields] = useState(initialCustomFields)
+  const [fieldDialog, setFieldDialog] = useState(false)
+  const [fieldEntityType, setFieldEntityType] = useState('contacts')
+  const [fieldType, setFieldType] = useState('text')
+  const [fieldLabel, setFieldLabel] = useState('')
+  const [fieldOptions, setFieldOptions] = useState('')
+  const [fieldPending, startFieldTransition] = useTransition()
+  const [activeEntity, setActiveEntity] = useState('contacts')
 
   function handleSaveWorkspace() {
     if (!workspace || !workspaceName.trim()) return
@@ -88,6 +116,56 @@ export function SettingsClient({ workspace, members, stages: initialStages, pipe
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Cannot delete stage — it may have deals assigned')
       }
+    })
+  }
+
+  function openFieldDialog(entityType: string) {
+    setFieldEntityType(entityType)
+    setFieldType('text')
+    setFieldLabel('')
+    setFieldOptions('')
+    setFieldDialog(true)
+  }
+
+  function handleCreateField() {
+    if (!fieldLabel.trim()) { toast.error('Field label is required'); return }
+    if (!workspace) return
+    const options = fieldType === 'select'
+      ? fieldOptions.split(',').map(s => s.trim()).filter(Boolean)
+      : []
+    if (fieldType === 'select' && options.length < 2) { toast.error('Add at least 2 comma-separated options'); return }
+
+    startFieldTransition(async () => {
+      try {
+        await createCustomField({
+          workspaceId: workspace.id,
+          entityType: fieldEntityType,
+          label: fieldLabel.trim(),
+          fieldType,
+          options,
+          position: customFields.filter(f => f.entityType === fieldEntityType).length,
+        })
+        setCustomFields(prev => [...prev, {
+          id: crypto.randomUUID(), workspaceId: workspace.id,
+          entityType: fieldEntityType, label: fieldLabel.trim(),
+          fieldType, options: options.length ? JSON.stringify(options) : null,
+          position: prev.filter(f => f.entityType === fieldEntityType).length,
+          createdAt: new Date(),
+        }])
+        toast.success('Custom field created')
+        setFieldDialog(false)
+      } catch { toast.error('Failed to create field') }
+    })
+  }
+
+  function handleDeleteField(id: string) {
+    if (!confirm('Delete this field? All stored values will also be deleted.')) return
+    startFieldTransition(async () => {
+      try {
+        await deleteCustomField(id)
+        setCustomFields(prev => prev.filter(f => f.id !== id))
+        toast.success('Field deleted')
+      } catch { toast.error('Failed to delete field') }
     })
   }
 
@@ -184,6 +262,113 @@ export function SettingsClient({ workspace, members, stages: initialStages, pipe
           </ol>
         </CardContent>
       </Card>
+
+      {/* ── Custom Fields ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Custom Fields</CardTitle>
+          <CardDescription>Add your own columns to Contacts, Deals, or Companies.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Tabs value={activeEntity} onValueChange={v => { if (v) setActiveEntity(v) }}>
+            <TabsList className="mb-4">
+              {ENTITY_TYPES.map(e => (
+                <TabsTrigger key={e.value} value={e.value}>{e.label}</TabsTrigger>
+              ))}
+            </TabsList>
+            {ENTITY_TYPES.map(entity => {
+              const entityFields = customFields.filter(f => f.entityType === entity.value)
+              return (
+                <TabsContent key={entity.value} value={entity.value} className="space-y-3">
+                  {entityFields.length === 0 && (
+                    <p className="text-sm text-muted-foreground py-2">No custom fields for {entity.label} yet.</p>
+                  )}
+                  {entityFields.map(field => {
+                    const typeInfo = FIELD_TYPES.find(t => t.value === field.fieldType)
+                    const Icon = typeInfo?.icon ?? Type
+                    const opts: string[] = field.options ? JSON.parse(field.options) : []
+                    return (
+                      <div key={field.id} className="flex items-center gap-3 p-2.5 rounded-lg border group hover:bg-accent/30 transition-colors">
+                        <div className="h-7 w-7 rounded-md bg-violet-100 text-violet-700 flex items-center justify-center shrink-0">
+                          <Icon className="h-3.5 w-3.5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium">{field.label}</p>
+                          <p className="text-xs text-muted-foreground capitalize">
+                            {typeInfo?.label ?? field.fieldType}
+                            {opts.length > 0 && ` · ${opts.join(', ')}`}
+                          </p>
+                        </div>
+                        <Button
+                          size="icon" variant="ghost" className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={() => handleDeleteField(field.id)} disabled={fieldPending}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
+                      </div>
+                    )
+                  })}
+                  <Button size="sm" variant="outline" onClick={() => openFieldDialog(entity.value)}>
+                    <Plus className="h-3.5 w-3.5 mr-1.5" />Add {entity.label.slice(0, -1)} Field
+                  </Button>
+                </TabsContent>
+              )
+            })}
+          </Tabs>
+        </CardContent>
+      </Card>
+
+      {/* ── Custom Field Dialog ── */}
+      <Dialog open={fieldDialog} onOpenChange={setFieldDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New Custom Field — {ENTITY_TYPES.find(e => e.value === fieldEntityType)?.label}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>Field label</Label>
+              <Input
+                placeholder="e.g. LinkedIn Score, Budget, Source…"
+                value={fieldLabel}
+                onChange={e => setFieldLabel(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleCreateField() }}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Field type</Label>
+              <Select value={fieldType} onValueChange={v => { if (v) setFieldType(v) }}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {FIELD_TYPES.map(t => (
+                    <SelectItem key={t.value} value={t.value}>
+                      <span className="flex items-center gap-2">
+                        <t.icon className="h-3.5 w-3.5" /> {t.label}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {fieldType === 'select' && (
+              <div className="space-y-1.5">
+                <Label>Options <span className="text-muted-foreground font-normal">(comma-separated)</span></Label>
+                <Input
+                  placeholder="Option A, Option B, Option C"
+                  value={fieldOptions}
+                  onChange={e => setFieldOptions(e.target.value)}
+                />
+              </div>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setFieldDialog(false)}>Cancel</Button>
+              <Button onClick={handleCreateField} disabled={fieldPending}>
+                {fieldPending ? 'Creating…' : 'Create Field'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={stageDialog} onOpenChange={setStageDialog}>
         <DialogContent>
