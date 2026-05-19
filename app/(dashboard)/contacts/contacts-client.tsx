@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Plus, Search, Trash2, Pencil, Linkedin } from 'lucide-react'
+import { Plus, Search, Trash2, Pencil } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Contact, Company } from '@/lib/db/schema'
 

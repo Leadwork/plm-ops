@@ -4,7 +4,7 @@ import { notFound, redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { ChevronLeft, Mail, Phone, Building2, Linkedin } from 'lucide-react'
+import { ChevronLeft, Mail, Phone, Building2, ExternalLink } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { getContact, getContactActivities, getContactDeals, getCompany } from '@/lib/db/queries'
 
@@ -61,7 +61,7 @@ export default async function ContactDetailPage({ params }: Props) {
               )}
               {contact.linkedinUrl && (
                 <div className="flex items-center gap-2 text-muted-foreground">
-                  <Linkedin className="h-3.5 w-3.5" />
+                  <ExternalLink className="h-3.5 w-3.5" />
                   <a href={contact.linkedinUrl} target="_blank" rel="noopener noreferrer" className="hover:underline truncate">
                     {contact.linkedinUrl.replace('https://www.linkedin.com/in/', '').replace('https://linkedin.com/in/', '')}
                   </a>
