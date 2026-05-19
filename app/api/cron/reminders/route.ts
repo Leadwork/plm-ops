@@ -14,6 +14,12 @@ async function sendTelegram(botToken: string, chatId: string, text: string) {
   return res.ok
 }
 
+// Returns HH:MM for a date offset by N minutes
+function offsetTime(date: Date, minutes: number): string {
+  const d = new Date(date.getTime() + minutes * 60 * 1000)
+  return `${d.getUTCHours().toString().padStart(2, '0')}:${d.getUTCMinutes().toString().padStart(2, '0')}`
+}
+
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization')
   if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -22,15 +28,13 @@ export async function GET(req: NextRequest) {
 
   const now = new Date()
   const today = now.toISOString().split('T')[0]
-  // Current time as HH:MM
-  const currentHH = now.getUTCHours().toString().padStart(2, '0')
-  const currentMM = now.getUTCMinutes().toString().padStart(2, '0')
-  const currentTime = `${currentHH}:${currentMM}`
-  // Window: tasks due within the next 20 minutes
-  const windowEnd = new Date(now.getTime() + 20 * 60 * 1000)
-  const windowHH = windowEnd.getUTCHours().toString().padStart(2, '0')
-  const windowMM = windowEnd.getUTCMinutes().toString().padStart(2, '0')
-  const windowTime = `${windowHH}:${windowMM}`
+  const currentTime = offsetTime(now, 0)
+
+  // Windows for matching (±1 min tolerance for cron drift)
+  const window15Start = offsetTime(now, 14)  // 14 min from now
+  const window15End   = offsetTime(now, 16)  // 16 min from now
+  const windowExactStart = offsetTime(now, -1) // 1 min ago
+  const windowExactEnd   = offsetTime(now, 1)  // 1 min ahead
 
   const channels = await db.select().from(notificationChannels)
     .where(eq(notificationChannels.enabled, true))
@@ -38,34 +42,65 @@ export async function GET(req: NextRequest) {
   let sent = 0
 
   for (const channel of channels) {
-    const config: Record<string, string> = JSON.parse(channel.config)
     if (channel.channelType !== 'telegram') continue
+    const config: Record<string, string> = JSON.parse(channel.config)
 
-    // Tasks with a specific time: due today, time in [currentTime, windowTime], not yet reminded
-    const timedTasks = await db.select().from(tasks).where(
+    // Get all pending timed tasks for this user due today
+    const allTodayTasks = await db.select().from(tasks).where(
       and(
         eq(tasks.workspaceId, channel.workspaceId),
         eq(tasks.assigneeId, channel.userId),
         ne(tasks.status, 'done'),
         eq(tasks.dueDate, today),
-        isNull(tasks.reminderSentAt),
       )
-    ).then(rows => rows.filter(t =>
-      t.dueTime && t.dueTime >= currentTime && t.dueTime <= windowTime
-    ))
+    ).then(rows => rows.filter(t => t.dueTime)) // only tasks with a specific time
 
-    for (const task of timedTasks) {
-      const text = `⏰ <b>Follow-up Reminder</b>\n\n<b>${task.title}</b>\nDue at ${task.dueTime} today${task.description ? `\n📝 ${task.description}` : ''}\n\n<a href="https://app.proleadmaker.com/tasks">Open Tasks →</a>`
+    // ── Message 2: 15-minute warning ─────────────────────────────────────────
+    const fifteenMinTasks = allTodayTasks.filter(t =>
+      t.dueTime! >= window15Start &&
+      t.dueTime! <= window15End &&
+      !t.reminderSentAt
+    )
+
+    for (const task of fifteenMinTasks) {
+      const text =
+        `⚠️ <b>Follow-up in 15 Minutes!</b>\n\n` +
+        `📋 ${task.title}\n` +
+        `🕐 At <b>${task.dueTime}</b> today` +
+        `${task.description ? `\n📝 ${task.description}` : ''}\n\n` +
+        `Get ready! <a href="https://app.proleadmaker.com/tasks">Open Tasks →</a>`
+
       const ok = await sendTelegram(config.botToken, config.chatId, text)
       if (ok) {
-        await db.update(tasks).set({ reminderSentAt: new Date() })
-          .where(eq(tasks.id, task.id))
+        await db.update(tasks).set({ reminderSentAt: new Date() }).where(eq(tasks.id, task.id))
         sent++
       }
     }
 
-    // Daily digest (runs at 8 AM UTC): tasks due today with no time set, and overdue tasks
-    const isEightAM = now.getUTCHours() === 8 && now.getUTCMinutes() < 20
+    // ── Message 3: Exact time ─────────────────────────────────────────────────
+    const exactTasks = allTodayTasks.filter(t =>
+      t.dueTime! >= windowExactStart &&
+      t.dueTime! <= windowExactEnd &&
+      !t.reminderExactSentAt
+    )
+
+    for (const task of exactTasks) {
+      const text =
+        `🔔 <b>Follow-up Time!</b>\n\n` +
+        `📋 ${task.title}\n` +
+        `🕐 Right now — <b>${task.dueTime}</b>` +
+        `${task.description ? `\n📝 ${task.description}` : ''}\n\n` +
+        `Time to act! <a href="https://app.proleadmaker.com/tasks">Open Tasks →</a>`
+
+      const ok = await sendTelegram(config.botToken, config.chatId, text)
+      if (ok) {
+        await db.update(tasks).set({ reminderExactSentAt: new Date() }).where(eq(tasks.id, task.id))
+        sent++
+      }
+    }
+
+    // ── Daily digest: 8 AM UTC for tasks with no specific time ────────────────
+    const isEightAM = now.getUTCHours() === 8 && now.getUTCMinutes() < 2
     if (isEightAM) {
       const digestTasks = await db.select().from(tasks).where(
         and(
@@ -75,10 +110,10 @@ export async function GET(req: NextRequest) {
           lte(tasks.dueDate, today),
           isNull(tasks.reminderSentAt),
         )
-      ).then(rows => rows.filter(t => !t.dueTime)) // only tasks without a specific time
+      ).then(rows => rows.filter(t => !t.dueTime))
 
-      const overdue = digestTasks.filter(t => t.dueDate! < today)
       const dueToday = digestTasks.filter(t => t.dueDate === today)
+      const overdue  = digestTasks.filter(t => t.dueDate! < today)
 
       if (digestTasks.length) {
         let text = `📋 <b>ProLeadMaker — Daily Digest</b>\n`
@@ -92,7 +127,12 @@ export async function GET(req: NextRequest) {
         }
         text += `\n<a href="https://app.proleadmaker.com/tasks">Open Tasks →</a>`
         const ok = await sendTelegram(config.botToken, config.chatId, text)
-        if (ok) sent++
+        if (ok) {
+          for (const t of digestTasks) {
+            await db.update(tasks).set({ reminderSentAt: new Date() }).where(eq(tasks.id, t.id))
+          }
+          sent++
+        }
       }
     }
   }

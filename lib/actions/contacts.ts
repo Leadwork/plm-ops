@@ -63,9 +63,12 @@ export async function scheduleFollowUp(data: {
   )
   if (channels.length) {
     const when = data.dueTime
-      ? `${data.dueDate} at ${data.dueTime}`
-      : data.dueDate
-    const text = `📅 <b>Follow-up Scheduled</b>\n\n<b>${title}</b>\n🕐 ${when}${data.note ? `\n📝 ${data.note}` : ''}\n\n<a href="https://app.proleadmaker.com/tasks">View in ProLeadMaker →</a>`
+      ? `${data.dueDate} at <b>${data.dueTime}</b>`
+      : `<b>${data.dueDate}</b>`
+    const remindLine = data.dueTime
+      ? `\n\n⏰ You'll get reminders 15 min before &amp; at exact time.`
+      : `\n\n⏰ You'll get a morning reminder on that day.`
+    const text = `✅ <b>Follow-up Scheduled!</b>\n\n📋 ${title}\n📆 ${when}${data.note ? `\n📝 ${data.note}` : ''}${remindLine}\n\n<a href="https://app.proleadmaker.com/tasks">View in ProLeadMaker →</a>`
     for (const ch of channels) {
       if (ch.channelType === 'telegram') {
         const config: Record<string, string> = JSON.parse(ch.config)
