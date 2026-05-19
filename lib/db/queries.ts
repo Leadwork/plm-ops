@@ -1,6 +1,106 @@
 import { db } from './index'
 import { workspaceMembers, contacts, companies, deals, tasks, activities, stages, pipelines, projects, taskLists, taskComments, users, workspaces } from './schema'
-import { eq, lt, desc, asc, and, sql } from 'drizzle-orm'
+import { eq, lt, desc, asc, and, sql, gte } from 'drizzle-orm'
+
+export async function getAnalytics(workspaceId: string) {
+  const twelveMonthsAgo = new Date()
+  twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 11)
+  twelveMonthsAgo.setDate(1)
+  twelveMonthsAgo.setHours(0, 0, 0, 0)
+
+  const [
+    dealsByStage,
+    wonLostByMonth,
+    contactsByMonth,
+    activitiesByType,
+    taskStats,
+    topDeals,
+  ] = await Promise.all([
+    // Pipeline funnel: deals by stage with value
+    db.select({
+      stageId: deals.stageId,
+      stageName: stages.name,
+      stagePosition: stages.position,
+      probability: stages.probability,
+      count: sql<number>`count(*)`,
+      value: sql<number>`coalesce(sum(${deals.value}::numeric), 0)`,
+    })
+      .from(deals)
+      .leftJoin(stages, eq(deals.stageId, stages.id))
+      .where(and(eq(deals.workspaceId, workspaceId), eq(deals.status, 'open')))
+      .groupBy(deals.stageId, stages.name, stages.position, stages.probability)
+      .orderBy(asc(stages.position)),
+
+    // Won/Lost by month (last 12 months)
+    db.select({
+      month: sql<string>`to_char(${deals.createdAt}, 'YYYY-MM')`,
+      status: deals.status,
+      count: sql<number>`count(*)`,
+      value: sql<number>`coalesce(sum(${deals.value}::numeric), 0)`,
+    })
+      .from(deals)
+      .where(and(
+        eq(deals.workspaceId, workspaceId),
+        sql`${deals.status} in ('won','lost')`,
+        gte(deals.createdAt, twelveMonthsAgo),
+      ))
+      .groupBy(sql`to_char(${deals.createdAt}, 'YYYY-MM')`, deals.status)
+      .orderBy(sql`to_char(${deals.createdAt}, 'YYYY-MM')`),
+
+    // New contacts by month (last 12 months)
+    db.select({
+      month: sql<string>`to_char(${contacts.createdAt}, 'YYYY-MM')`,
+      count: sql<number>`count(*)`,
+    })
+      .from(contacts)
+      .where(and(eq(contacts.workspaceId, workspaceId), gte(contacts.createdAt, twelveMonthsAgo)))
+      .groupBy(sql`to_char(${contacts.createdAt}, 'YYYY-MM')`)
+      .orderBy(sql`to_char(${contacts.createdAt}, 'YYYY-MM')`),
+
+    // Activities by type
+    db.select({
+      type: activities.type,
+      count: sql<number>`count(*)`,
+    })
+      .from(activities)
+      .where(eq(activities.workspaceId, workspaceId))
+      .groupBy(activities.type)
+      .orderBy(desc(sql`count(*)`)),
+
+    // Task completion stats
+    db.select({
+      status: tasks.status,
+      count: sql<number>`count(*)`,
+    })
+      .from(tasks)
+      .where(eq(tasks.workspaceId, workspaceId))
+      .groupBy(tasks.status),
+
+    // Top open deals by value
+    db.select({
+      id: deals.id, title: deals.title, value: deals.value,
+      stageName: stages.name,
+      contactFirstName: contacts.firstName, contactLastName: contacts.lastName,
+    })
+      .from(deals)
+      .leftJoin(stages, eq(deals.stageId, stages.id))
+      .leftJoin(contacts, eq(deals.contactId, contacts.id))
+      .where(and(eq(deals.workspaceId, workspaceId), eq(deals.status, 'open')))
+      .orderBy(desc(deals.value))
+      .limit(5),
+  ])
+
+  // Weighted pipeline value
+  const weightedValue = dealsByStage.reduce((sum, s) =>
+    sum + (Number(s.value) * (s.probability ?? 0)) / 100, 0)
+
+  // Win rate
+  const wonCount = wonLostByMonth.filter(r => r.status === 'won').reduce((s, r) => s + Number(r.count), 0)
+  const lostCount = wonLostByMonth.filter(r => r.status === 'lost').reduce((s, r) => s + Number(r.count), 0)
+  const winRate = wonCount + lostCount > 0 ? Math.round((wonCount / (wonCount + lostCount)) * 100) : 0
+
+  return { dealsByStage, wonLostByMonth, contactsByMonth, activitiesByType, taskStats, topDeals, weightedValue, winRate, wonCount, lostCount }
+}
 
 export async function getWorkspaceId(userId: string) {
   const [m] = await db.select({ workspaceId: workspaceMembers.workspaceId })
