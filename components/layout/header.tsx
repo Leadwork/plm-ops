@@ -3,6 +3,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { MobileNav } from '@/components/layout/sidebar'
 import { GlobalSearch } from '@/components/search/global-search'
 import { NotificationBell } from '@/components/notifications/notification-bell'
+import { ThemeToggle } from '@/components/theme-toggle'
 
 export async function Header({ title }: { title: string }) {
   const session = await auth()
@@ -17,6 +18,7 @@ export async function Header({ title }: { title: string }) {
       </div>
       <div className="flex items-center gap-3">
         <GlobalSearch />
+        <ThemeToggle />
         <NotificationBell />
         <Avatar className="h-8 w-8 shrink-0">
           <AvatarFallback className="text-xs text-white brand-gradient">
